@@ -101,6 +101,8 @@ def main():
     ap.add_argument("--resume", default="", help="path to a checkpoint to continue training from")
     ap.add_argument("--seed-offset", type=int, default=0, dest="seed_offset",
                     help="first game seed to harvest; bump between runs for fresh data")
+    ap.add_argument("--attack-weight", type=float, default=5.0, dest="attack_weight",
+                    help="loss weight on attack (non-HOLD) decisions; 1.0 = plain CE")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print("device", dev, "| harvesting", args.games, "games "
@@ -132,7 +134,14 @@ def main():
         own = om.bool().view(-1)
         tlog = tgt_logits.view(B * N, N + 1)[own]
         tlab = tl.view(B * N)[own]
-        loss_t = F.cross_entropy(tlog, tlab)
+        # attack-weighted target CE: most owned planets HOLD, so plain CE is
+        # dominated by getting HOLD right. Upweight the rare attack decisions so
+        # the gradient focuses on "which target", which is what we measure.
+        ce_t = F.cross_entropy(tlog, tlab, reduction="none")
+        wts = torch.where(tlab != N_MAX,
+                          torch.tensor(args.attack_weight, device=dev),
+                          torch.tensor(1.0, device=dev))
+        loss_t = (ce_t * wts).sum() / wts.sum()
         # fraction loss only where teacher attacked (label >= 0)
         flog = frac_logits.view(B * N, N_FRAC)[own]
         flab = fl.view(B * N)[own]
@@ -143,6 +152,8 @@ def main():
         acc = (tlog[atk].argmax(-1) == tlab[atk]).float().mean() if atk.any() else torch.tensor(0.0)
         return loss_t + 0.5 * loss_f, acc
 
+    best_acc = -1.0
+    best_path = args.out.replace(".pt", "_best.pt") if args.out.endswith(".pt") else args.out + "_best"
     for ep in range(args.epochs):
         net.train()
         p = tr[torch.randperm(len(tr))]
@@ -153,10 +164,16 @@ def main():
         net.eval()
         with torch.no_grad():
             vl, va_acc = batch_loss(va, False)
-        print(f"epoch {ep:2d}  val_loss {vl.item():.3f}  val_target_acc {va_acc.item():.3f}")
+        acc = va_acc.item()
+        flag = ""
+        if acc > best_acc:
+            best_acc = acc
+            torch.save({"model": net.state_dict(), "opt": opt.state_dict()}, best_path)
+            flag = "  <- new best, saved"
+        print(f"epoch {ep:3d}  val_loss {vl.item():.3f}  val_target_acc {acc:.3f}{flag}")
 
     torch.save({"model": net.state_dict(), "opt": opt.state_dict()}, args.out)
-    print("saved", args.out)
+    print(f"saved last -> {args.out} | best (val_acc={best_acc:.3f}) -> {best_path}")
 
 
 if __name__ == "__main__":

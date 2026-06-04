@@ -15,7 +15,7 @@ Design choices (see notes in the chat):
 """
 import math, numpy as np, contextlib, io
 from kaggle_environments import make
-from ow_base import parse_obs, sq_dist, predict_all_fleet_hits, is_orbiting, reach
+from ow_base import parse_obs, sq_dist, predict_all_fleet_hits, is_orbiting, reach, how_many_send
 from search_agent import snapshot, sim_step, evaluate, _obs_from_state
 
 N_MAX = 40          # max planets we pad to (board has 32)
@@ -85,18 +85,24 @@ def is_orbiting_raw(p, obs):
     return math.sqrt(dx * dx + dy * dy) + p[4] < 50.0
 
 
-def decode_action(enc, obs, player, target_idx, frac_idx):
+def decode_action(enc, obs, player, target_idx, frac_idx, capture_size=False, spare=1):
     """Translate per-owned-planet (target index, fraction index) into engine moves.
       target_idx : (N_MAX,) int — chosen target index per node (ignored unless owned).
                    A value == its own index (i.e. target==self) is treated as HOLD.
       frac_idx   : (N_MAX,) int — chosen fraction bucket per node.
+      capture_size: if True, IGNORE the fraction head and size each attack with the
+                   teacher's how_many_send logic (garrison + production-in-flight +
+                   spare), accounting for the target's incoming enemy reinforcement,
+                   so attacks actually capture instead of undershooting.
     Returns list of [from_id, angle, ships].
     """
     planets = {p[0]: p for p in obs["planets"]}
     inc_enemy = {}
+    inc_enemy_tgt = {}
     for owner, ships, pid, tick in predict_all_fleet_hits(obs):
         if owner != player:
             inc_enemy[pid] = inc_enemy.get(pid, 0) + ships
+            inc_enemy_tgt[pid] = inc_enemy_tgt.get(pid, 0) + ships
 
     moves = []
     ids = enc["ids"]
@@ -114,15 +120,42 @@ def decode_action(enc, obs, player, target_idx, frac_idx):
         avail = src[5] - reserve
         if avail <= 0:
             continue
-        ships = int(round(FRACS[int(frac_idx[i])] * avail))
-        ships = max(1, min(ships, avail))
         src_p = _as_planet(src)
-        dst_p = _as_planet(dst)
-        sol = reach(src_p, dst_p, ships, obs)
-        if sol is None:
-            continue
-        _t, angle = sol
-        moves.append([src[0], angle, ships])
+        dst_is_mine = (dst[1] == player)
+        if dst_is_mine:
+            # Reinforcement / forward-staging: don't use capture logic on our own
+            # planet. Ferry the surplus (available minus the network's chosen
+            # fraction lets the policy modulate how much to commit). Send the
+            # fraction of available ships the frac head picked, like a ferry.
+            ships = int(round(FRACS[int(frac_idx[i])] * avail))
+            ships = max(1, min(ships, avail))
+            dst_p = _as_planet(dst)
+            sol = reach(src_p, dst_p, ships, obs)
+            if sol is None:
+                continue
+            _t, angle = sol
+            moves.append([src[0], angle, ships])
+        elif capture_size:
+            # size to actually take the target: its effective garrison includes
+            # enemy reinforcements arriving; how_many_send adds production-in-flight.
+            dst_eff = list(dst)
+            dst_eff[5] = int(dst[5] + inc_enemy_tgt.get(dst[0], 0))
+            dst_p = _as_planet(dst_eff)
+            ships, angle, _t = how_many_send(src_p, dst_p, spare, obs)
+            if ships is None or ships <= 0:
+                continue
+            if ships > avail:        # can't afford a winning attack -> skip (save ships)
+                continue
+            moves.append([src[0], angle, int(ships)])
+        else:
+            ships = int(round(FRACS[int(frac_idx[i])] * avail))
+            ships = max(1, min(ships, avail))
+            dst_p = _as_planet(dst)
+            sol = reach(src_p, dst_p, ships, obs)
+            if sol is None:
+                continue
+            _t, angle = sol
+            moves.append([src[0], angle, ships])
     return moves
 
 
@@ -158,10 +191,13 @@ class OrbitEnv:
         return o
 
     def _diff(self):
+        # The ENGINE scores the game by total SHIPS (planets' ships + fleets),
+        # not planet count or production. Match that exactly so PPO optimizes the
+        # real objective. Scaled down so per-step shaping stays a gentle nudge.
         s = 0.0
         for p in self.st["planets"]:
-            sign = 1 if p[1] == 0 else (-1 if p[1] != -1 else 0)
-            s += sign * (p[5] + self.prod_w * p[6])
+            if p[1] != -1:
+                s += (1 if p[1] == 0 else -1) * p[5]
         for f in self.st["fleets"]:
             s += (1 if f[1] == 0 else -1) * f[6]
         return s
@@ -170,14 +206,35 @@ class OrbitEnv:
         sim_step(self.st, {0: moves0, 1: moves1})
         self.t += 1
         cur = self._diff()
-        shaped = (cur - self._last) * 0.01     # dense shaping for player 0
+        shaped = (cur - self._last) * 0.002   # ship deltas are large; keep nudge small
         self._last = cur
         done = self.t >= self.max_steps or self._winner() is not None
         term = 0.0
         if done:
-            w = self._winner()
-            term = 1.0 if w == 0 else (-1.0 if w == 1 else 0.0)
+            term = self._terminal_reward()
         return shaped + term, done
+
+    def _terminal_reward(self):
+        # Win by elimination OR by higher ship score at the step limit — matching
+        # the engine's own end-of-game rule.
+        w = self._winner()
+        if w == 0:
+            return 5.0
+        if w == 1:
+            return -5.0
+        # timeout: decide by ship score, like the engine does
+        s0 = s1 = 0
+        for p in self.st["planets"]:
+            if p[1] == 0:
+                s0 += p[5]
+            elif p[1] != -1:
+                s1 += p[5]
+        for f in self.st["fleets"]:
+            if f[1] == 0:
+                s0 += f[6]
+            elif f[1] == 1:
+                s1 += f[6]
+        return 5.0 if s0 > s1 else (-5.0 if s1 > s0 else 0.0)
 
     def _winner(self):
         owners = set(p[1] for p in self.st["planets"] if p[1] != -1)

@@ -4,6 +4,11 @@ Loads weights once (module load) and exposes `agent(obs)` for kaggle.
 Greedy action (argmax) for deterministic play. Falls back to net_roi_support
 if anything goes wrong, so a bad checkpoint never forfeits.
 
+The agent decodes with capture_size=True — the SAME sizing used in training,
+PPO, and replay. (Without it, decode_action would fall back to the network's
+raw fraction head, which undershoots captures and plays a weaker, different
+agent than the one that was trained.)
+
 Local eval against net_roi_support:
   python submit_agent.py --ckpt ppo.pt --games 50
 """
@@ -15,6 +20,7 @@ from ow_base import net_roi_support
 _NET = None
 _DEV = "cuda" if torch.cuda.is_available() else "cpu"
 _CKPT = "ppo.pt"   # change or set via load_ckpt()
+_HOLD_PENALTY = 0.0  # subtract from HOLD logit at decision time; >0 = attack more
 
 
 def load_ckpt(path):
@@ -40,9 +46,14 @@ def agent(obs):
         am = torch.tensor(enc["attack_mask"]).unsqueeze(0).to(_DEV)
         with torch.no_grad():
             tl, fl, _ = _NET(nf, build_edge(nf), nm, am)
-        tgt = tl[0].argmax(-1).cpu().numpy()
+        tl = tl[0].clone()
+        if _HOLD_PENALTY:
+            tl[:, -1] -= _HOLD_PENALTY      # last col is HOLD; lower it -> attack more
+        tgt = tl.argmax(-1).cpu().numpy()
         frac = fl[0].argmax(-1).cpu().numpy()
-        return decode_action(enc, obs, player, tgt, frac)
+        # capture_size=True: size attacks to actually take the target (matches
+        # training / PPO / replay). This is the decode the policy was trained under.
+        return decode_action(enc, obs, player, tgt, frac, capture_size=True)
     except Exception:
         return net_roi_support(obs)
 
@@ -53,7 +64,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="ppo.pt")
     ap.add_argument("--games", type=int, default=50)
+    ap.add_argument("--hold-penalty", type=float, default=0.0, dest="hold_penalty",
+                    help="subtract from HOLD logit; >0 makes the agent attack more")
     args = ap.parse_args()
+    globals()["_HOLD_PENALTY"] = args.hold_penalty
     load_ckpt(args.ckpt)
     wins = 0
     for i in range(args.games):
