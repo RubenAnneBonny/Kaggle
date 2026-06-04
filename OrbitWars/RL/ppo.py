@@ -122,6 +122,50 @@ def recompute_logp_value(net, cache, dev):
     return logp_per, active, value[0], ent
 
 
+def benchmark_winrate(net, dev, opp_fn, games, seed_base):
+    """GREEDY eval of `net` vs a FIXED opponent over `games` real-env
+    (comet-bearing) games, alternating sides. Returns win fraction.
+
+    This is the meaningful selection signal — especially for self-play, where the
+    training win_rate is pinned near 0.50 (you're playing a copy of yourself) and
+    says nothing about real strength. Uses seeds seed_base..seed_base+games-1;
+    keep that range DISJOINT from --seed-start so eval games are never trained on.
+    Matches submit_agent.py: greedy argmax + capture_size=True, real kaggle env."""
+    import contextlib, io
+    from kaggle_environments import make
+    was_training = net.training
+    net.eval()
+
+    def agent(obs):
+        try:
+            enc = encode_state(obs, obs["player"])
+            if enc["own_mask"].sum() == 0:
+                return []
+            nf = torch.tensor(enc["node_feats"]).unsqueeze(0).to(dev)
+            nm = torch.tensor(enc["node_mask"]).unsqueeze(0).to(dev)
+            am = torch.tensor(enc["attack_mask"]).unsqueeze(0).to(dev)
+            with torch.no_grad():
+                tl, fl, _ = net(nf, build_edge(nf), nm, am)
+            tgt = tl[0].argmax(-1).cpu().numpy()
+            frac = fl[0].argmax(-1).cpu().numpy()
+            return decode_action(enc, obs, obs["player"], tgt, frac, capture_size=True)
+        except Exception:
+            return []
+
+    wins = 0
+    for i in range(games):
+        order = [agent, opp_fn] if i % 2 == 0 else [opp_fn, agent]
+        ai = 0 if i % 2 == 0 else 1
+        e = make("orbit_wars", configuration={"seed": seed_base + i}, debug=False)
+        with contextlib.redirect_stderr(io.StringIO()):
+            e.run(order)
+        r = [s.reward if s.reward is not None else 0 for s in e.steps[-1]]
+        wins += r[ai] > r[1 - ai]
+    if was_training:
+        net.train()
+    return wins / max(games, 1)
+
+
 def collect_episode(net, opp_net, env, seed, dev, gamma=0.99, lam=0.95, opp_fn=None):
     obs0, obs1 = env.reset(seed=seed)
     traj = []
@@ -193,6 +237,22 @@ def main():
                          "policy. This is cheap: games are collected ONCE, not per-epoch. 0 to skip.")
     ap.add_argument("--warmup-games", type=int, default=6, dest="warmup_games",
                     help="how many games to collect once for value warmup (default 6)")
+    ap.add_argument("--eval-every", type=int, default=10, dest="eval_every",
+                    help="every N iters, run a GREEDY benchmark eval vs --eval-opponent "
+                         "and select _best by THAT (not the training win_rate, which is "
+                         "meaningless in self-play). 0 = fall back to old win_rate-based best.")
+    ap.add_argument("--eval-games", type=int, default=40, dest="eval_games",
+                    help="games per benchmark eval (40 -> +/-~15pts, fine for relative "
+                         "selection; confirm the winner later with submit_agent at 300).")
+    ap.add_argument("--eval-opponent", default="teacher", dest="eval_opponent",
+                    help="fixed opponent for the benchmark eval: 'teacher' (=net_roi_support) "
+                         "or any agent name in ow_base.py. This is your real scoreboard.")
+    ap.add_argument("--eval-seed-base", type=int, default=0, dest="eval_seed_base",
+                    help="first seed for benchmark eval (0..eval_games-1). MUST stay clear "
+                         "of --seed-start (training seeds) to avoid leakage.")
+    ap.add_argument("--save-every", type=int, default=25, dest="save_every",
+                    help="also write a numbered snapshot every N iters (e.g. ppo_self_it50.pt) "
+                         "so a noisy selector can't lose a good policy. 0 = off.")
     ap.add_argument("--debug", action="store_true", help="verbose per-iteration diagnostics")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -215,12 +275,24 @@ def main():
         opp_fn = ow_base.net_roi_support
     else:
         opp_fn = getattr(ow_base, args.opponent)
+    # fixed opponent for the greedy benchmark eval (the real selection signal)
+    if args.eval_opponent == "teacher":
+        eval_opp_fn = ow_base.net_roi_support
+    else:
+        eval_opp_fn = getattr(ow_base, args.eval_opponent)
     print(f"training opponent: {args.opponent} | value_warmup={args.value_warmup} epochs "
           f"on {args.warmup_games} games | lr={args.lr} ent={args.ent} clip={args.clip} "
           f"eps/iter={args.episodes_per_iter} minibatch={args.minibatch} "
           f"target_kl={args.target_kl}")
+    if args.eval_every > 0:
+        print(f"selection: GREEDY benchmark vs {args.eval_opponent} every {args.eval_every} "
+              f"iters ({args.eval_games} games, seeds {args.eval_seed_base}.."
+              f"{args.eval_seed_base + args.eval_games - 1}) -> _best by benchmark win-rate")
+    else:
+        print("selection: by training win_rate (NOTE: meaningless for self-play)")
     seed = args.seed_start
     best_wr = -1.0
+    best_bench = -1.0
 
     # ===== ONE-SHOT VALUE WARMUP =====
     # Collect a small batch of games ONCE, then train ONLY the value head for many
@@ -324,14 +396,45 @@ def main():
         if opp_fn is None and (it + 1) % args.refresh == 0:
             opp.load_state_dict(net.state_dict())
         wr = wins / args.episodes_per_iter
-        if wr > best_wr:
-            best_wr = wr
+
+        def _suffix(tag):
+            return (args.out.replace(".pt", f"_{tag}.pt")
+                    if args.out.endswith(".pt") else args.out + f"_{tag}")
+
+        # numbered snapshot every save-every iters (insurance against a noisy selector)
+        if args.save_every > 0 and (it + 1) % args.save_every == 0:
             torch.save({"model": net.state_dict(), "opt": opt.state_dict()},
-                       args.out.replace(".pt", "_best.pt") if args.out.endswith(".pt") else args.out + "_best")
+                       _suffix(f"it{it + 1}"))
+
+        # ---- best-checkpoint selection ----
+        bench = None
+        if args.eval_every > 0:
+            # meaningful signal: greedy benchmark vs a FIXED opponent on clean seeds.
+            if (it + 1) % args.eval_every == 0:
+                bench = benchmark_winrate(net, dev, eval_opp_fn,
+                                          args.eval_games, args.eval_seed_base)
+                if bench > best_bench:
+                    best_bench = bench
+                    torch.save({"model": net.state_dict(), "opt": opt.state_dict()},
+                               _suffix("best"))
+        else:
+            # legacy behavior: select by training win_rate (fine vs scripted, NOT self-play)
+            if wr > best_wr:
+                best_wr = wr
+                torch.save({"model": net.state_dict(), "opt": opt.state_dict()},
+                           _suffix("best"))
+
         if it % args.log_every == 0:
-            line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  "
-                    f"win_rate {wr:.2f}  best {best_wr:.2f}  kl {mean_kl:.4f}"
-                    f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}")
+            if args.eval_every > 0:
+                bench_str = f"  bench {bench:.2f}" if bench is not None else ""
+                sel = f"best_bench {best_bench:.2f}" if best_bench >= 0 else "best_bench --"
+                line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  "
+                        f"train_wr {wr:.2f}{bench_str}  {sel}  kl {mean_kl:.4f}"
+                        f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}")
+            else:
+                line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  "
+                        f"win_rate {wr:.2f}  best {best_wr:.2f}  kl {mean_kl:.4f}"
+                        f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}")
             if args.debug:
                 rmin = min(r[0] for r in ratios_seen) if ratios_seen else 0
                 rmax = max(r[1] for r in ratios_seen) if ratios_seen else 0
