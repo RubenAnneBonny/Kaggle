@@ -6,11 +6,16 @@
 # Run from RLV2:   .\overnight_phase1_4p.ps1
 Set-Location $PSScriptRoot
 
+# Force unbuffered stdout: when python is piped to Tee-Object it block-buffers and
+# looks "stuck" (and the log file stays empty until a flush). This makes every
+# print() appear live in the console and the log.
+$env:PYTHONUNBUFFERED = "1"
+
 # The old warmup cache was built from the OLD (collapsed) BC -> stale. Force a rebuild.
 Remove-Item ppo4_phase1_warmup.pt -ErrorAction SilentlyContinue
 
 Write-Output "=== [1/2] $(Get-Date -Format u)  Retraining BC 4p (bounded fraction head) ==="
-python bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt |
+python -u bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt |
     Tee-Object -FilePath bc4_retrain.log
 if ($LASTEXITCODE -ne 0) {
     Write-Output "!! BC retrain failed (exit $LASTEXITCODE) - aborting before PPO."
@@ -18,7 +23,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Output "=== [2/2] $(Get-Date -Format u)  PPO phase-1 (4p) on fresh BC ==="
-python ppo.py --players 4 --init bc4_best.pt --opponent self `
+python -u ppo.py --players 4 --init bc4_best.pt --opponent self `
   --league-size 8 --league-add-every 10 `
   --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.05 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-cache ppo4_phase1_warmup.pt `
