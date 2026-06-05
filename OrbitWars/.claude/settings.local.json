@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RLV2\\\\ppo.py\" | Measure-Object -Line\\).Lines; \\(Get-Content \"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RL\\\\ppo.py\" | Measure-Object -Line\\).Lines)",
+      "Bash(python -m py_compile C:/Users/ruben/Kaggle/OrbitWars/RLV2/ppo.py)",
+      "Bash(python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iters 1 --episodes_per_iter 1 --eval-every 0 --value-warmup 0 --save-every 0 --out /tmp/_smoke_backcompat.pt)",
+      "Bash(C:/Users/ruben/Kaggle/OrbitWars/venv/Scripts/python.exe ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iters 1 --episodes_per_iter 1 --eval-every 0 --value-warmup 0 --save-every 0 --out _smoke_backcompat.pt)",
+      "Bash(C:/Users/ruben/Kaggle/OrbitWars/venv/Scripts/python.exe -c \"import sys; print\\(sys.executable\\); print\\(sys.path\\)\")",
+      "Bash(where python *)",
+      "Bash(python -c \"import torch; print\\(torch.__version__\\)\")",
+      "Bash(C:/Users/ruben/AppData/Local/Programs/Python/Python313/python.exe -c \"import torch; print\\('torch', torch.__version__\\); import kaggle_environments; print\\('kaggle_envs', kaggle_environments.__version__\\)\")",
+      "Bash(conda env *)",
+      "Read(//c/Users/ruben/anaconda3/**)",
+      "Read(//c/Users/ruben/miniconda3/**)"
+    ]
+  }
+}
