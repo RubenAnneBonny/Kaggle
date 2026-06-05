@@ -129,6 +129,7 @@ games naturally vary in composition.
 # ---- 2-player ----
 python ppo.py --players 2 --init bc2_best.pt --opponent self `
   --league-size 12 --league-add-every 20 `
+  --vf-coef 0.25 --lr 3e-5 `
   --mix-teacher 0.15 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
@@ -140,6 +141,7 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self `
 # ---- 4-player (after bc4 finishes) ----
 python ppo.py --players 4 --init bc4_best.pt --opponent self `
   --league-size 16 --league-add-every 20 `
+  --vf-coef 0.25 --lr 3e-5 `
   --mix-teacher 0.12 --mix-aggressive 0.08 --mix-weak 0.05 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
@@ -148,6 +150,14 @@ python ppo.py --players 4 --init bc4_best.pt --opponent self `
   --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
   --iters 2000 --out ppo4.pt
 ```
+
+`--vf-coef 0.25 --lr 3e-5` are the stability settings for fine-tuning a
+warm-started (BC-peaked) policy: the lower value coefficient softens the value
+gradient that flows through the shared trunk into the policy, and the lower
+learning rate keeps the peaked target logits from flipping. Combined with the
+per-minibatch KL gate (`--target-kl`, default 0.03), they keep the run from
+diverging. Once `kl` is stably under target and `bench` climbs, you can nudge
+`--lr` back toward `1e-4` and `--vf-coef` toward `0.5` (the defaults) to speed up.
 
 The 2p mix per slot: 15% teacher, 5% defender (turtle), 5% most_production
 (economic priority), 5% comet_user (comet-aware), 15% RL-v1 submission, 55%
