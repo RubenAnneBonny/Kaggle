@@ -31,7 +31,7 @@ Usage:
   # train against a frozen earlier champion:
   python ppo.py --players 2 --init bc2_best.pt --opponent ckpt:ppo2_best.pt --out ppo2b.pt
 """
-import argparse, contextlib, importlib.util, io, glob, os, numpy as np, torch, torch.nn.functional as F
+import argparse, contextlib, importlib.util, io, glob, os, re, numpy as np, torch, torch.nn.functional as F
 from ow_env import OrbitEnv, encode_state, decode_action, N_MAX, FRAC_FLOOR
 from model import OrbitNet, build_edge, frac_dist, FRAC_EPS
 from seeds import train_seed, eval_seed
@@ -326,6 +326,10 @@ def main():
                     help="restore v1 'solo-capture-or-skip' (forbids coordinated attacks)")
     ap.add_argument("--out", default="ppo.pt")
     ap.add_argument("--value-warmup", type=int, default=100, dest="value_warmup")
+    ap.add_argument("--warmup-lr", type=float, default=1e-3, dest="warmup_lr",
+                    help="LR for the value-head warmup ONLY (it zeroes non-value grads, so "
+                         "this can't destabilize the policy). Decoupled from --lr so a low "
+                         "policy lr doesn't leave the value head under-calibrated.")
     ap.add_argument("--warmup-games", type=int, default=6, dest="warmup_games")
     ap.add_argument("--warmup-cache", default=None, dest="warmup_cache",
                     help="path to cache the post-warmup net. If the file exists it is "
@@ -435,17 +439,48 @@ def main():
         print(f"  league_size={args.league_size} add_every={args.league_add_every or args.refresh}"
               f" (back-compat single-opponent path)")
     print(f"  selection: GREEDY benchmark vs {args.eval_opponent} every {args.eval_every} iters"
-          f" ({args.eval_games} eval-pool games) -> _best")
+          f" ({args.eval_games} eval-pool games) -> _best (submit target)")
     if args.bench_also:
         print(f"  also benchmarking vs: {', '.join(args.bench_also)} "
-              f"({args.eval_games} games each per eval tick — logged, not selected on)")
+              f"({args.eval_games} games each per eval tick — each keeps its own _best_<name>)")
 
     def _suffix(tag):
         return (args.out.replace(".pt", f"_{tag}.pt") if args.out.endswith(".pt")
                 else args.out + f"_{tag}")
 
+    # Every benchmarked opponent keeps its OWN rolling best checkpoint: the primary
+    # (--eval-opponent) saves to the canonical _best (the submit target); each
+    # --bench-also opponent saves to _best_<name>. Each file is updated
+    # independently per eval tick, so beating several opponents at once saves
+    # several bests in the same tick.
+    bench_targets = [(args.eval_opponent, eval_opp_fn, True)]
+    bench_targets += [(spec, fn, False) for spec, fn in bench_also]
+    best_wr = {}        # opponent display name -> best benchmark win-rate so far
+
+    def _best_path(name, primary):
+        if primary:
+            return _suffix("best")
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
+        return _suffix(f"best_{safe}")
+
+    def _eval_and_save_bests():
+        """Benchmark net vs every target; save that opponent's own _best whenever
+        it improves. Returns (primary_wr, [(name, wr) extras], [saved filenames])."""
+        primary_wr, extras, saved = None, [], []
+        for name, fn, primary in bench_targets:
+            wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
+            if wr > best_wr.get(name, -1.0):
+                best_wr[name] = wr
+                path = _best_path(name, primary)
+                torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
+                            "players": args.players}, path)
+                saved.append(os.path.basename(path))
+            (extras.append((name, wr)) if not primary else None)
+            if primary:
+                primary_wr = wr
+        return primary_wr, extras, saved
+
     seed_i = args.train_off
-    best_bench = -1.0
 
     # ===== one-shot value warmup (optionally cached to disk for reuse) =====
     # The warmup-calibrated value head depends ONLY on the init policy and the
@@ -457,6 +492,8 @@ def main():
         net.load_state_dict(ck["model"])
         if "opt" in ck:
             opt.load_state_dict(ck["opt"])
+        for g in opt.param_groups:    # opt state in the cache carries the warmup lr; the
+            g["lr"] = args.lr         # training phase must use THIS run's --lr (sweep-safe)
         seed_i += args.warmup_games          # keep training seeds aligned with a fresh warmup
         if ck.get("init") not in (None, args.init):
             print(f"  WARNING: warmup cache built from init={ck.get('init')}, now init={args.init}")
@@ -475,7 +512,9 @@ def main():
             for t in range(len(traj)):
                 wbatch.append([traj[t][3], ret[t]])
         print(f"[warmup] {len(wbatch)} states (collect win_rate {wwins/args.warmup_games:.2f}); "
-              f"training value head {args.value_warmup} epochs...")
+              f"training value head {args.value_warmup} epochs @ lr {args.warmup_lr:g}...")
+        for g in opt.param_groups:    # value-only phase: use the dedicated warmup lr
+            g["lr"] = args.warmup_lr
         for ep in range(args.value_warmup):
             np.random.shuffle(wbatch); vloss_sum = 0.0
             for s in range(0, len(wbatch), args.minibatch):
@@ -490,6 +529,8 @@ def main():
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0); opt.step()
             if ep % max(1, args.value_warmup // 10) == 0 or ep == args.value_warmup - 1:
                 print(f"[warmup] epoch {ep:3d}  value_loss {vloss_sum/len(wbatch):.3f}")
+        for g in opt.param_groups:    # restore the policy lr before the cache save / training
+            g["lr"] = args.lr
         print("[warmup] done.")
         if cache_path:
             torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
@@ -498,20 +539,14 @@ def main():
             print(f"[warmup] cached to {cache_path} (reuse later with --warmup-cache {cache_path})")
 
     # ===== baseline benchmark (where the warm-start stands BEFORE any PPO step) =====
-    # Establishes the starting win-rate and seeds _best with the warm-start, so a
-    # diverging run can't overwrite _best with something worse than where we began.
+    # Establishes the starting win-rate and seeds EVERY opponent's _best with the
+    # warm-start, so a diverging run can't overwrite any _best with something worse
+    # than where we began.
     if args.eval_every > 0 and args.eval_games > 0:
-        base = benchmark_winrate(net, dev, eval_opp_fn, args.eval_games,
-                                 args.players, args.eval_off)
-        best_bench = base
-        torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
-                    "players": args.players}, _suffix("best"))
-        extras = []
-        for spec, fn in bench_also:
-            wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
-            extras.append((spec, wr))
+        p_wr, extras, saved = _eval_and_save_bests()
         es = (" [" + "  ".join(f"{n} {w:.2f}" for n, w in extras) + "]") if extras else ""
-        print(f"[baseline] bench vs {args.eval_opponent} {base:.2f}{es}  (saved _best)")
+        sv = ("  -> saved " + ", ".join(saved)) if saved else ""
+        print(f"[baseline] bench vs {args.eval_opponent} {p_wr:.2f}{es}{sv}")
 
     for it in range(args.iters):
         batch, ep_rewards, wins, dbgs = [], [], 0, []
@@ -576,18 +611,10 @@ def main():
                         "players": args.players}, _suffix(f"it{it+1}"))
 
         bench = None
-        bench_extras = []   # list of (display_name, win_rate)
+        bench_extras = []        # list of (display_name, win_rate)
+        saved_bests = []         # filenames written this tick (one per opponent improved)
         if args.eval_every > 0 and (it + 1) % args.eval_every == 0:
-            bench = benchmark_winrate(net, dev, eval_opp_fn, args.eval_games,
-                                      args.players, args.eval_off)
-            if bench > best_bench:
-                best_bench = bench
-                torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
-                            "players": args.players}, _suffix("best"))
-            for spec, fn in bench_also:
-                wr = benchmark_winrate(net, dev, fn, args.eval_games,
-                                       args.players, args.eval_off)
-                bench_extras.append((spec, wr))
+            bench, bench_extras, saved_bests = _eval_and_save_bests()
 
         if it % args.log_every == 0:
             wr = wins / args.episodes_per_iter
@@ -595,11 +622,13 @@ def main():
             if bench is not None:
                 bs = f"  bench {bench:.2f}"
                 if bench_extras:
-                    bs += " [" + "  ".join(f"{n} {wr:.2f}" for n, wr in bench_extras) + "]"
-            sel = f"best_bench {best_bench:.2f}" if best_bench >= 0 else "best_bench --"
+                    bs += " [" + "  ".join(f"{n} {w:.2f}" for n, w in bench_extras) + "]"
+            sel_wr = best_wr.get(args.eval_opponent, -1.0)
+            sel = f"best_bench {sel_wr:.2f}" if sel_wr >= 0 else "best_bench --"
             line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  train_wr {wr:.2f}"
                     f"{bs}  {sel}  kl {mean_kl:.4f}"
-                    f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}")
+                    f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}"
+                    f"{('  *saved ' + ', '.join(saved_bests)) if saved_bests else ''}")
             if args.debug:
                 line += (f"\n        raw_adv [{min(d['adv_min'] for d in dbgs):+.1f},"
                          f"{max(d['adv_max'] for d in dbgs):+.1f}] val "

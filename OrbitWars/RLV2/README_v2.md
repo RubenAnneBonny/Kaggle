@@ -134,7 +134,7 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
   --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.15 `
-  --eval-every 3 --eval-games 20 `
+  --eval-every 5 --eval-games 40 `
   --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
   --iters 2000 --out ppo2.pt
 
@@ -146,7 +146,7 @@ python ppo.py --players 4 --init bc4_best.pt --opponent self `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
   --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.10 `
-  --eval-every 3 --eval-games 20 `
+  --eval-every 5 --eval-games 40 `
   --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
   --iters 2000 --out ppo4.pt
 ```
@@ -158,6 +158,16 @@ learning rate keeps the peaked target logits from flipping. Combined with the
 per-minibatch KL gate (`--target-kl`, default 0.03), they keep the run from
 diverging. Once `kl` is stably under target and `bench` climbs, you can nudge
 `--lr` back toward `1e-4` and `--vf-coef` toward `0.5` (the defaults) to speed up.
+
+The value warmup trains **only the value head** (non-value grads are zeroed), so
+it can't destabilize the policy and gets its **own** learning rate via
+`--warmup-lr` (default `1e-3`), decoupled from the policy `--lr`. This matters
+when you lower `--lr` for stability: at `3e-5` a 100-epoch warmup left the value
+head under-calibrated (`value_loss ≈ 0.2` and still falling) because it inherited
+the tiny policy lr; the dedicated `--warmup-lr` converges it regardless. A
+poorly-calibrated value head means noisier advantages, so every KL-capped step
+points in a worse direction — keep an eye on the final warmup `value_loss` and
+raise `--value-warmup`/`--warmup-lr` if it hasn't flattened.
 
 `--warmup-cache PATH` makes the one-shot value warmup reusable: the first run
 collects the calibration games, trains the value head, and saves the result to
@@ -181,34 +191,56 @@ agent that engages comet mechanics. The rest of the `net_attacker*` /
 without adding strategic information.
 
 Before the first PPO step, a **baseline benchmark** runs so you can see where
-the warm-start stands, and it seeds `ppoN_best.pt` with the warm-start weights —
-a diverging run can no longer overwrite `_best` with something worse than where
-it began:
+the warm-start stands, and it seeds **every** opponent's best checkpoint with the
+warm-start weights — a diverging run can no longer overwrite any `_best` with
+something worse than where it began:
 
 ```
-[baseline] bench vs teacher 0.45 [external:rl_v1 0.40  nearest_planet 0.85]  (saved _best)
+[baseline] bench vs teacher 0.45 [external:rl_v1 0.40  nearest_planet 0.85]  -> saved ppo2_best.pt, ppo2_best_external_rl_v1.pt, ppo2_best_nearest_planet.pt
 ```
 
-Both runs write a rolling `ppoN_itXXXX.pt` every `--save-every` iters and
-overwrite `ppoN_best.pt` whenever the greedy benchmark vs **teacher** improves
-(the primary eval). The log line per eval tick looks like:
+**One best per benchmarked opponent.** Each opponent keeps its own rolling best
+checkpoint, updated independently whenever the net beats its previous best vs
+*that* opponent — so a policy that's great vs `nearest` but mediocre vs `teacher`
+doesn't cost you the strong-vs-nearest checkpoint, and beating several opponents
+in one tick saves several files:
+
+- primary (`--eval-opponent`, e.g. teacher) → `ppoN_best.pt` (**the submit target**)
+- each `--bench-also` opponent → `ppoN_best_<name>.pt`
+  (`ppo2_best_external_rl_v1.pt`, `ppo2_best_nearest_planet.pt`)
+
+Both runs also write a rolling `ppoN_itXXXX.pt` every `--save-every` iters. The
+log line per eval tick looks like:
 
 ```
 iter   42  mean_ep_reward +1.234  train_wr 0.62 `
            bench 0.55 [external:rl_v1 0.48  nearest_planet 0.92] `
-           best_bench 0.57  kl 0.012
+           best_bench 0.57  kl 0.012  *saved ppo2_best.pt, ppo2_best_nearest_planet.pt
 ```
 
-`bench` is vs teacher (drives `_best`). The bracketed extras — vs the previous
-Kaggle submission and vs `nearest_planet` — are observational: rl_v1 tells you
-"am I beating my own prior submission yet?" and nearest tells you "am I still
-trivially handling weak opponents, or did self-play break the basics?".
+`bench` is vs teacher and `best_bench` tracks its best (the submit target). The
+bracketed extras each drive their own `_best_<name>` file: rl_v1 = "am I beating
+my own prior submission yet?", nearest = "am I still trivially handling weak
+opponents, or did self-play break the basics?". `*saved ...` lists which best
+files were written this tick.
+
+**Eval-games sizing.** A win-rate over `n` games has resolution `1/n` and a
+representativeness spread of `√(p(1−p)/n)`: at `n=20` that's 5 pp steps and
+≈ ±11 pp; at `n=40`, 2.5 pp and ≈ ±8 pp. Since **every** benchmark now drives a
+`_best` save, coarse eval makes selection lock onto lucky-seed checkpoints — so
+`--eval-games 40` is the recommended floor (40→80 only shaves the spread another
+~29 %, not worth the cost). The benchmark is deterministic for a fixed net
+(greedy decode, scripted opponents, fixed eval-seed pool), so the issue is
+resolution + small-sample representativeness, not run-to-run jitter.
 
 Total eval cost per tick = `--eval-games × (1 + #bench-also)`. At
-`--eval-games 20` with two extras that's 60 games every 3 iters ≈ 20 games/iter
-average. Drop `--eval-games` (e.g. to 16) or push `--eval-every` higher
-(`5`, `10`) if you want to pay less. Set `--eval-every 1` for per-iter
-granularity at ~60 games/iter.
+`--eval-games 40` with two extras that's 120 games per tick — note eval already
+dominates wall-clock here (it's ~5× the 8 training episodes/iter at
+`--eval-every 3`), so the default pairs `40` with **`--eval-every 5`** to keep
+total eval cost (≈ 24 games/iter) close to the old `20 / every-3` setting while
+getting finer resolution. Use `--eval-every 3` for more responsiveness (≈ 40
+games/iter), drop `--eval-games` if you must pay less, or `--eval-every 1` for
+per-iter granularity at ~120 games/iter.
 
 ### Stage 3 — Evaluation and inspection
 
@@ -292,8 +324,11 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   `--bench-also external:NAME`.
 - `--bench-also NAME` (ppo.py, repeatable) — extra benchmark opponent shown
   alongside the primary every eval tick. Same syntax as `--eval-opponent`
-  (`teacher`, `aggressive`, `external:NAME`, or any `ow_base` callable).
-  Logged but does not drive `_best` — the primary `--eval-opponent` does.
+  (`teacher`, `aggressive`, `external:NAME`, or any `ow_base` callable). Each
+  drives its **own** `ppoN_best_<name>.pt`; only the primary `--eval-opponent`
+  writes the canonical `ppoN_best.pt` (the submit target).
+- `--warmup-lr` (ppo.py, default `1e-3`) — LR for the value-head warmup only;
+  decoupled from `--lr` so a low policy lr doesn't under-calibrate the value head.
 
 ## Hard-won lessons
 
@@ -317,6 +352,20 @@ update to ~`target_kl`. Two amplifiers make a warm-started policy fragile here:
 shares the transformer trunk**, so a large early value loss yanks the policy
 through the shared encoder — lower `--vf-coef` (e.g. 0.25) and/or `--lr` (e.g.
 3e-5) for the first fine-tuning phase if KL is erratic.
+
+Expect `early-stop @ep1` on (almost) every iter, and that's *healthy*, not a bug:
+a peaked policy saturates the `target_kl` trust region partway through the first
+pass, so it stops mid-epoch-0 and discards the rest of the collected data. The
+reported `kl` looks small (≈ the mean of the sub-threshold minibatches that were
+applied; the one that crossed `target_kl` triggers the stop and isn't averaged
+in) — occasionally even slightly negative, which is just the crude per-source
+estimator's sign noise. `--epochs` is therefore a *ceiling*, not a target: it
+only binds once the policy is less peaked or you widen the trust region. **The
+per-iter learning budget is `target_kl`, not `--lr` or `--epochs`** — once the
+gate is the binding constraint, raising `--lr` just reaches the cap in fewer
+minibatches; to actually move faster per iter, raise `--target-kl` (now safe
+because it's gated). If reward stays flat with KL pinned at target, the limiter
+is the opponent mix difficulty or value/advantage quality, not the step size.
 
 New in v2: the engine rotates planets on the **pre-increment** step (fix your
 simulator's tick order or everything drifts); **comets follow paths, not

@@ -14,7 +14,8 @@
       "Read(//c/Users/ruben/miniconda3/**)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); print\\('parse OK'\\)\")",
       "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory//**)",
-      "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory/**)"
+      "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory/**)",
+      "Bash(python *)"
     ]
   }
 }
