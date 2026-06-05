@@ -66,21 +66,122 @@ model.
 (`--opponent ckpt:PATH.pt`) or a sampled pool of them (`--opponent pool:GLOB`),
 in addition to `self`, `teacher`, `aggressive`, and any scripted agent.
 
+**Rolling self-play league + per-slot opponent mix.** v1 self-play collapsed
+because the agent only ever saw one frozen opponent at a time and overfit to it
+— the benchmark dropped from ~0.50 to ~0.40 within a few dozen iters of pure
+self-play. v2 makes the opponent a *distribution*, not a single net:
+
+  * `--league-size N` keeps a rolling FIFO pool of the last `N` self-snapshots
+    in memory. With `--league-size 1` (default) the pool is one element and
+    behavior is byte-identical to before. `--league-add-every K` (default `0` →
+    use `--refresh`) controls how often a fresh snapshot is appended.
+  * `--mix-teacher`, `--mix-aggressive`, `--mix-weak` set per-slot probabilities
+    of using a scripted opponent (`net_roi_support`, `net_roi_aggressive`,
+    `nearest_planet`). `--mix-scripted NAME:WEIGHT` (repeatable) adds any other
+    callable from `ow_base.py` — useful for strategically distinct shapes the
+    teacher family doesn't cover. The remainder goes to the league. Anchors
+    the policy to the real objective from iter 0 — no waiting for self-play
+    to "settle".
+  * Each non-focal slot in every episode draws **independently** from this
+    distribution and keeps its identity for the whole game (coherent gameplay,
+    not per-step identity swaps). In 4p this naturally varies the table:
+    sometimes three league snapshots, sometimes teacher + league + weak,
+    sometimes mixed with an external agent.
+  * Setting any `--mix-*` flag (or `--league-size > 1` with `--opponent self`)
+    promotes the run onto the per-episode-draw path; with no flags set the run
+    follows the original single-opponent path bit-for-bit.
+
+**External agents as sparring partners.** `--external NAME=PATH` loads a `.py`
+file's `agent(obs)` callable and registers it under `NAME`. `--mix-external
+NAME:WEIGHT` (repeatable) gives that agent a slot weight. The intended use is
+training against the **prior Kaggle submission** — `RL/submission_orbitnet.py`
+exports a self-contained `agent` (model weights inlined as base64) — so the new
+model gets a direct sparring partner that represents real prior-art play. The
+same agent can be used as a benchmark target with `--eval-opponent
+external:NAME`.
+
 ## Pipeline
 
-Train the two models independently. Example (tune iters/games to your compute):
+Train the two models independently. The PPO commands below use the rolling
+league + opponent mix from iter 0 — this is the recommended path; the
+single-opponent commands at the bottom are kept for back-compat sanity checks
+only.
+
+### Stage 1 — Behavioral cloning
 
 ```
-# ---- 2-player model ----
-python bc.py  --players 2 --games 800 --epochs 120 --out bc2.pt
-python ppo.py --players 2 --init bc2_best.pt --opponent self --iters 2000 --out ppo2.pt
+# ---- 2-player ----
+python bc.py --players 2 --games 800 --epochs 120 --bs 256 --out bc2.pt
 
-# ---- 4-player model ----
-python bc.py  --players 4 --games 800 --epochs 120 --out bc4.pt
-python ppo.py --players 4 --init bc4_best.pt --opponent self --iters 2000 --out ppo4.pt
+# ---- 4-player ----
+python bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt
 ```
 
-Evaluate on the eval pool (never trained on) and inspect games:
+Each run writes `bcN.pt` (last epoch) and `bcN_best.pt` (best eval).
+
+### Stage 2 — PPO with rolling league + mixed opponents
+
+Mix per non-focal slot, per episode: `--mix-*` are explicit weights, the
+remainder goes to the league. Slots are drawn independently each episode, so 4p
+games naturally vary in composition.
+
+```
+# ---- 2-player ----
+python ppo.py --players 2 --init bc2_best.pt --opponent self `
+  --league-size 12 --league-add-every 20 `
+  --mix-teacher 0.15 `
+  --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
+  --mix-scripted comet_user:0.05 `
+  --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.15 `
+  --eval-every 3 --eval-games 20 `
+  --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
+  --iters 2000 --out ppo2.pt
+
+# ---- 4-player (after bc4 finishes) ----
+python ppo.py --players 4 --init bc4_best.pt --opponent self `
+  --league-size 16 --league-add-every 20 `
+  --mix-teacher 0.12 --mix-aggressive 0.08 --mix-weak 0.05 `
+  --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
+  --mix-scripted comet_user:0.05 `
+  --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.10 `
+  --eval-every 3 --eval-games 20 `
+  --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
+  --iters 2000 --out ppo4.pt
+```
+
+The 2p mix per slot: 15% teacher, 5% defender (turtle), 5% most_production
+(economic priority), 5% comet_user (comet-aware), 15% RL-v1 submission, 55%
+league. The 4p mix: 12% teacher, 8% aggressive, 5% weak, 5% defender, 5%
+most_production, 5% comet_user, 10% RL-v1, 50% league. The three
+`--mix-scripted` agents are the only entries in `ow_base.py` that genuinely
+differ from the teacher family — `defender` is the lone turtle, `most_production`
+targets by production rather than ROI, and `comet_user` is the only scripted
+agent that engages comet mechanics. The rest of the `net_attacker*` /
+`net_roi_*` family are micro-iterations of the teacher and would dilute signal
+without adding strategic information.
+
+Both runs write a rolling `ppoN_itXXXX.pt` every `--save-every` iters and
+overwrite `ppoN_best.pt` whenever the greedy benchmark vs **teacher** improves
+(the primary eval). The log line per eval tick looks like:
+
+```
+iter   42  mean_ep_reward +1.234  train_wr 0.62 `
+           bench 0.55 [external:rl_v1 0.48  nearest_planet 0.92] `
+           best_bench 0.57  kl 0.012
+```
+
+`bench` is vs teacher (drives `_best`). The bracketed extras — vs the previous
+Kaggle submission and vs `nearest_planet` — are observational: rl_v1 tells you
+"am I beating my own prior submission yet?" and nearest tells you "am I still
+trivially handling weak opponents, or did self-play break the basics?".
+
+Total eval cost per tick = `--eval-games × (1 + #bench-also)`. At
+`--eval-games 20` with two extras that's 60 games every 3 iters ≈ 20 games/iter
+average. Drop `--eval-games` (e.g. to 16) or push `--eval-every` higher
+(`5`, `10`) if you want to pay less. Set `--eval-every 1` for per-iter
+granularity at ~60 games/iter.
+
+### Stage 3 — Evaluation and inspection
 
 ```
 python submit_agent.py --players 2 --model ppo2_best.pt --games 300 --opponent teacher
@@ -88,13 +189,21 @@ python submit_agent.py --players 4 --model ppo4_best.pt --games 300 --opponent t
 python replay.py --players 2 --model ppo2_best.pt --opponent teacher --seed-idx 0
 ```
 
-For submission, point the agent at both checkpoints and submit the code +
-checkpoints together:
+### Submission
 
 ```
-export OW_MODEL_2P=ppo2_best.pt
-export OW_MODEL_4P=ppo4_best.pt
+$env:OW_MODEL_2P = "ppo2_best.pt"
+$env:OW_MODEL_4P = "ppo4_best.pt"
 # kaggle entry point: submit_agent.agent
+```
+
+### Back-compat sanity (reproduce a v1-style single-opp run)
+
+With every new flag at its default, behavior is byte-identical to the prior
+single-opponent path. Useful as a regression check after pulling changes.
+
+```
+python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iters 20
 ```
 
 ## Files
@@ -111,8 +220,13 @@ export OW_MODEL_4P=ppo4_best.pt
   fraction, comet-safe, coordinated), and the n-player 500-step `OrbitEnv`.
 - `bc.py` — Stage 1 behavioral cloning of the aggressive teacher; attack-weighted
   target CE + Beta-NLL fraction loss; `--players {2,4}`.
-- `ppo.py` — Stage 2 PPO self-play; Beta fraction, n-player rollouts, flexible
-  opponents incl. checkpoints, value warmup, KL early-stop, minibatched updates.
+- `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup, KL
+  early-stop, minibatched updates. Opponents are drawn per slot per episode
+  from a rolling self-snapshot league (`--league-size`), an optional scripted
+  mix (`--mix-teacher/aggressive/weak`, plus any other `ow_base` callable via
+  `--mix-scripted NAME:WEIGHT`), and any external `agent(obs)` callable
+  registered via `--external NAME=PATH`. Defaults reproduce the single-opponent
+  v1 path.
 - `submit_agent.py` — competition entry; dispatches 2p/4p, greedy decode, scripted
   fallback; `--model ... --games ...` for local eval.
 - `replay.py` — render a game to seed/result-stamped HTML with a per-step trace.
@@ -130,6 +244,26 @@ export OW_MODEL_4P=ppo4_best.pt
 - `shaping` (OrbitEnv, default 0.003) — potential-style reward on
   `(my_score − best_opponent_score)`; the terminal ±5 (engine rule: highest
   positive ship total wins, ties win) dominates.
+- `--league-size` (ppo.py, default `1`) — rolling FIFO pool of self-snapshots.
+  `1` reproduces the old single-opp behavior; `>1` enables league play.
+- `--league-add-every` (ppo.py, default `0`) — iters between appends. `0` falls
+  back to `--refresh` (the legacy knob).
+- `--mix-teacher`, `--mix-aggressive`, `--mix-weak` (ppo.py, all default `0.0`)
+  — per-slot probabilities of the named scripted opponents
+  (`net_roi_support`, `net_roi_aggressive`, `nearest_planet`). Sum across the
+  whole mix must be ≤ 1; remainder goes to league.
+- `--mix-scripted NAME:WEIGHT` (ppo.py, repeatable) — per-slot weight for any
+  other callable in `ow_base.py` (e.g. `defender:0.05`, `most_production:0.05`,
+  `comet_user:0.05`). Use these to add strategic shapes the teacher family
+  doesn't cover.
+- `--external NAME=PATH` + `--mix-external NAME:WEIGHT` (ppo.py, repeatable) —
+  register a `.py` file's `agent(obs)` callable as a sparring partner with a
+  given slot weight. Also usable as `--eval-opponent external:NAME` or
+  `--bench-also external:NAME`.
+- `--bench-also NAME` (ppo.py, repeatable) — extra benchmark opponent shown
+  alongside the primary every eval tick. Same syntax as `--eval-opponent`
+  (`teacher`, `aggressive`, `external:NAME`, or any `ow_base` callable).
+  Logged but does not drive `_best` — the primary `--eval-opponent` does.
 
 ## Hard-won lessons
 
@@ -137,8 +271,11 @@ Carried from v1: clip the PPO ratio **per planet**, not on the joint action
 (the joint ratio is `exp` of a sum of N differences and explodes); step the
 optimizer **once per minibatch**, not once per state; **warm up the value head**
 before letting advantages move the policy; in self-play the training win-rate is
-pinned near 0.5 and is meaningless — **select on a greedy benchmark vs a fixed
-opponent**.
+pinned near 0.5 and is meaningless — **select `_best` on a greedy benchmark vs
+a fixed stable opponent** (teacher), but **watch additional benchmarks
+alongside it** (rl_v1 = "am I beating my own prior submission?", nearest = "am
+I still trivially handling weak opponents?"). A single number hides regressions
+and stalls that show up clearly across a difficulty ladder.
 
 New in v2: the engine rotates planets on the **pre-increment** step (fix your
 simulator's tick order or everything drifts); **comets follow paths, not
@@ -147,6 +284,19 @@ args by count**, so any agent with extra parameters gets the framework's config
 object bound to them — agents must be single-arg; with a continuous fraction the
 **fraction log-prob must receive PPO credit on every non-HOLD source** (v1 only
 counted ferries because captures ignored the fraction).
+
+On opponent diversity: a **single frozen self-opponent is a trap**. The PPO
+policy will specialize against whatever it sees, and when the snapshot refreshes
+the strategy shatters — that's the v1 collapse from `bench 0.50` to `0.40`. The
+fix is to face a *distribution* of opponents from iter 0: a rolling pool of
+past selves, plus enough scripted/external weight to anchor the policy to the
+real objective. The mix can also be **too narrow**: if 80% of slots land on a
+weak agent, the policy stops needing to defend and brittles in a different
+direction. Keep most weight on near-skill (league + teacher), small weight on
+adversarial probes (the prior submission), and only dial up `weak` in 4p where
+"go after the weakest seat" is a real strategy. Per-slot draws must be
+**independent** in n-player games — putting three identical opponents at one
+table is unrealistic and trains a single narrow counter.
 
 ## Not yet ported
 

@@ -310,6 +310,8 @@ def main():
                     help="per-slot probability of using scripted aggressive teacher")
     ap.add_argument("--mix-weak", type=float, default=0.0, dest="mix_weak",
                     help="per-slot probability of using a weak scripted agent (nearest_planet)")
+    ap.add_argument("--mix-scripted", action="append", default=[], dest="mix_scripted",
+                    help="NAME:WEIGHT (repeatable); per-slot weight for any callable in ow_base.py")
     ap.add_argument("--external", action="append", default=[], dest="external",
                     help="NAME=PATH (repeatable); PATH is a .py file exposing agent(obs)")
     ap.add_argument("--mix-external", action="append", default=[], dest="mix_external",
@@ -325,6 +327,9 @@ def main():
     ap.add_argument("--eval-every", type=int, default=10, dest="eval_every")
     ap.add_argument("--eval-games", type=int, default=40, dest="eval_games")
     ap.add_argument("--eval-opponent", default="teacher", dest="eval_opponent")
+    ap.add_argument("--bench-also", action="append", default=[], dest="bench_also",
+                    help="extra benchmark opponent (same syntax as --eval-opponent); "
+                         "repeatable; logged but does not drive _best")
     ap.add_argument("--eval-seed-offset", type=int, default=0, dest="eval_off")
     ap.add_argument("--save-every", type=int, default=25, dest="save_every")
     ap.add_argument("--log-every", type=int, default=1, dest="log_every")
@@ -354,18 +359,26 @@ def main():
 
     env = OrbitEnv(max_steps=args.max_steps, num_players=args.players, focal=0)
     opp, refreshable = build_opponent(args.opponent, self_pool, dev)
-    if args.eval_opponent.startswith("external:"):
-        eval_opp_fn = externals[args.eval_opponent[len("external:"):]]
-    elif args.eval_opponent == "teacher":
-        eval_opp_fn = ow_base.net_roi_support
-    elif args.eval_opponent == "aggressive":
-        eval_opp_fn = ow_base.net_roi_aggressive
-    else:
-        eval_opp_fn = getattr(ow_base, args.eval_opponent)
+    def _resolve_eval_opp(name):
+        if name.startswith("external:"):
+            return externals[name[len("external:"):]]
+        if name == "teacher":     return ow_base.net_roi_support
+        if name == "aggressive":  return ow_base.net_roi_aggressive
+        return getattr(ow_base, name)
+
+    eval_opp_fn = _resolve_eval_opp(args.eval_opponent)
+    bench_also = [(spec, _resolve_eval_opp(spec)) for spec in args.bench_also]
 
     mix_weights = {"teacher": args.mix_teacher,
                    "aggressive": args.mix_aggressive,
                    "weak": args.mix_weak}
+    for spec in args.mix_scripted:
+        if ":" not in spec:
+            raise SystemExit(f"--mix-scripted must be NAME:WEIGHT, got: {spec}")
+        name, w = spec.rsplit(":", 1)
+        if not callable(getattr(ow_base, name, None)):
+            raise SystemExit(f"--mix-scripted '{name}' is not a callable in ow_base.py")
+        mix_weights[f"script:{name}"] = float(w)
     for spec in args.mix_external:
         if ":" not in spec:
             raise SystemExit(f"--mix-external must be NAME:WEIGHT, got: {spec}")
@@ -392,6 +405,8 @@ def main():
             if k == "teacher":    return Opponent("fn", fn=ow_base.net_roi_support, dev=dev)
             if k == "aggressive": return Opponent("fn", fn=ow_base.net_roi_aggressive, dev=dev)
             if k == "weak":       return Opponent("fn", fn=ow_base.nearest_planet, dev=dev)
+            if k.startswith("script:"):
+                return Opponent("fn", fn=getattr(ow_base, k[7:]), dev=dev)
             if k.startswith("ext:"):
                 return Opponent("fn", fn=externals[k[4:]], dev=dev)
             net_pick = self_pool[np.random.randint(len(self_pool))]
@@ -413,6 +428,9 @@ def main():
               f" (back-compat single-opponent path)")
     print(f"  selection: GREEDY benchmark vs {args.eval_opponent} every {args.eval_every} iters"
           f" ({args.eval_games} eval-pool games) -> _best")
+    if args.bench_also:
+        print(f"  also benchmarking vs: {', '.join(args.bench_also)} "
+              f"({args.eval_games} games each per eval tick — logged, not selected on)")
 
     def _suffix(tag):
         return (args.out.replace(".pt", f"_{tag}.pt") if args.out.endswith(".pt")
@@ -500,6 +518,7 @@ def main():
                         "players": args.players}, _suffix(f"it{it+1}"))
 
         bench = None
+        bench_extras = []   # list of (display_name, win_rate)
         if args.eval_every > 0 and (it + 1) % args.eval_every == 0:
             bench = benchmark_winrate(net, dev, eval_opp_fn, args.eval_games,
                                       args.players, args.eval_off)
@@ -507,10 +526,18 @@ def main():
                 best_bench = bench
                 torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
                             "players": args.players}, _suffix("best"))
+            for spec, fn in bench_also:
+                wr = benchmark_winrate(net, dev, fn, args.eval_games,
+                                       args.players, args.eval_off)
+                bench_extras.append((spec, wr))
 
         if it % args.log_every == 0:
             wr = wins / args.episodes_per_iter
-            bs = f"  bench {bench:.2f}" if bench is not None else ""
+            bs = ""
+            if bench is not None:
+                bs = f"  bench {bench:.2f}"
+                if bench_extras:
+                    bs += " [" + "  ".join(f"{n} {wr:.2f}" for n, wr in bench_extras) + "]"
             sel = f"best_bench {best_bench:.2f}" if best_bench >= 0 else "best_bench --"
             line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  train_wr {wr:.2f}"
                     f"{bs}  {sel}  kl {mean_kl:.4f}"
