@@ -23,6 +23,12 @@ import math, torch, torch.nn as nn, torch.nn.functional as F
 N_MAX = 40
 NODE_F = 11           # v2: +1 for net-attack
 FRAC_EPS = 1e-3       # clamp Beta samples/targets away from {0,1} for stable logp
+# Cap the Beta concentration. An UNBOUNDED softplus let BC's NLL drive alpha+beta
+# into the hundreds (a near-delta fraction head -> a passive, brittle warm-start
+# that PPO struggles to un-collapse). With each of alpha,beta in (1, 1+CAP], the
+# concentration is bounded to [2, 2+2*CAP] (~30), keeping real exploration while
+# still letting the MEAN span (0,1). BC learns within this bound cleanly.
+FRAC_CONC_CAP = 14.0
 
 
 class DistBiasEncoderLayer(nn.Module):
@@ -84,7 +90,8 @@ class OrbitNet(nn.Module):
         hold = self.hold(x)                                  # B,N,1
         tgt_logits = torch.cat([tgt, hold], dim=-1)          # B,N,N+1
 
-        frac_ab = F.softplus(self.frac_mlp(x)) + 1.0         # B,N,2  (alpha,beta > 1)
+        # bounded concentration: each of alpha,beta in (1, 1+FRAC_CONC_CAP]
+        frac_ab = 1.0 + FRAC_CONC_CAP * torch.sigmoid(self.frac_mlp(x))   # B,N,2
 
         nm = node_mask.unsqueeze(-1)
         mean = (x * nm).sum(1) / nm.sum(1).clamp(min=1)

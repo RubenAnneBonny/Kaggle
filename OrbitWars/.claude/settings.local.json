@@ -15,7 +15,11 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); print\\('parse OK'\\)\")",
       "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory//**)",
       "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory/**)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell($py = \"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\venv\\\\Scripts\\\\python.exe\"; & $py -c \"import torch; print\\('torch', torch.__version__\\)\")",
+      "PowerShell($venvPy=\"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\venv\\\\Scripts\\\\python.exe\"; & $venvPy -m pip list 2>$null | Select-String -Pattern \"torch|numpy|kaggle\" ; Write-Output \"--- py313 ---\"; & \"C:\\\\Users\\\\ruben\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -c \"import torch; print\\('py313 torch', torch.__version__\\)\" 2>&1 | Select-Object -First 3)",
+      "PowerShell(& \"C:\\\\Users\\\\ruben\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -c \"import torch, sys; print\\('OK', sys.executable, torch.__version__\\)\")"
     ]
   }
 }

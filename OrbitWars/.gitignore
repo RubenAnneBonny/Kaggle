@@ -1,0 +1,10 @@
+# Python bytecode — regenerated on every machine at identical paths, so tracking
+# it guarantees merge conflicts when syncing two machines. Ignore + untrack.
+__pycache__/
+*.pyc
+
+# Per-run / per-machine training artifacts (regenerated; not worth syncing and a
+# potential churn/conflict source). Best checkpoints are kept (see negations).
+*.log
+*_warmup.pt
+*_it[0-9]*.pt

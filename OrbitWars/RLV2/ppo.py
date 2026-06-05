@@ -106,9 +106,18 @@ def policy_act(net, obs, player, dev, greedy=False):
     logp = logp_per.sum()
 
     moves = _dec(enc, obs, player, tgt_np, frac_np)
+    # collapse diagnostics (per owned source): how often it picks HOLD, the target
+    # head's entropy (mode sharpness), and the Beta concentration alpha+beta.
+    with torch.no_grad():
+        own_f = own.float(); n_own = own_f.sum().clamp(min=1)
+        diag = dict(n_own=float(own.float().sum()),
+                    hold_frac=float(((tgt == HOLD).float() * own_f).sum() / n_own),
+                    ent_cat=float((td.entropy() * own_f).sum() / n_own),
+                    conc=float((frac_ab.sum(-1) * own_f).sum() / n_own),
+                    n_moves=len(moves))
     cache = dict(nf=nf, nm=nm, am=am, edge=edge, tgt=tgt.detach(),
                  frac=frac.detach(), own=own, frac_active=frac_active,
-                 old_logp_per=logp_per.detach())
+                 old_logp_per=logp_per.detach(), diag=diag)
     return moves, logp, value[0], cache
 
 
@@ -275,9 +284,14 @@ def collect_episode(net, opp_draw, env, seed, dev, gamma=0.99, lam=0.95):
         adv[t] = gae; nextv = v
     ret = [adv[t] + traj[t][1] for t in range(len(traj))]
     vals = [traj[t][1] for t in range(len(traj))]
+    dg = [t[3]["diag"] for t in traj]
     dbg = dict(ep_len=len(traj), ret_sum=sum(t[2] for t in traj),
                adv_min=min(adv), adv_max=max(adv),
-               val_min=min(vals), val_max=max(vals), ret_min=min(ret), ret_max=max(ret))
+               val_min=min(vals), val_max=max(vals), ret_min=min(ret), ret_max=max(ret),
+               hold_frac=np.mean([d["hold_frac"] for d in dg]),
+               ent_cat=np.mean([d["ent_cat"] for d in dg]),
+               conc=np.mean([d["conc"] for d in dg]),
+               n_moves=np.mean([d["n_moves"] for d in dg]))
     return traj, adv, ret, dbg
 
 
@@ -625,9 +639,17 @@ def main():
                     bs += " [" + "  ".join(f"{n} {w:.2f}" for n, w in bench_extras) + "]"
             sel_wr = best_wr.get(args.eval_opponent, -1.0)
             sel = f"best_bench {sel_wr:.2f}" if sel_wr >= 0 else "best_bench --"
+            # collapse diagnostics: hold% rising -> passivity; ent_cat -> 0 means the
+            # target argmax sharpened (mode collapse); conc (Beta alpha+beta) rising
+            # means the fraction head is going deterministic; mv = decoded moves/turn.
+            hold = np.mean([d["hold_frac"] for d in dbgs])
+            entc = np.mean([d["ent_cat"] for d in dbgs])
+            conc = np.mean([d["conc"] for d in dbgs])
+            mv = np.mean([d["n_moves"] for d in dbgs])
             line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  train_wr {wr:.2f}"
                     f"{bs}  {sel}  kl {mean_kl:.4f}"
                     f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}"
+                    f"  | hold {hold:.0%} entH {entc:.2f} conc {conc:.1f} mv {mv:.1f}"
                     f"{('  *saved ' + ', '.join(saved_bests)) if saved_bests else ''}")
             if args.debug:
                 line += (f"\n        raw_adv [{min(d['adv_min'] for d in dbgs):+.1f},"
