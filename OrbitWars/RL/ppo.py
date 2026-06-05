@@ -166,6 +166,49 @@ def benchmark_winrate(net, dev, opp_fn, games, seed_base):
     return wins / max(games, 1)
 
 
+def benchmark_winrate_fast(net, dev, opp_fn, games, seed_base, max_steps):
+    """CHEAP greedy eval on the fast (comet-free) OrbitEnv vs a fixed opponent.
+    Not the real scoreboard (ignores comets), but it's the SAME simulator the
+    policy trains on, so it's a faithful RELATIVE signal you can afford to run
+    every iter or two. Use it to watch the trend live; confirm any winner with
+    the real-env eval (benchmark_winrate / submit_agent at 300 games)."""
+    was_training = net.training
+    net.eval()
+
+    def greedy_moves(obs):
+        enc = encode_state(obs, obs["player"])
+        if enc["own_mask"].sum() == 0:
+            return []
+        nf = torch.tensor(enc["node_feats"]).unsqueeze(0).to(dev)
+        nm = torch.tensor(enc["node_mask"]).unsqueeze(0).to(dev)
+        am = torch.tensor(enc["attack_mask"]).unsqueeze(0).to(dev)
+        with torch.no_grad():
+            tl, fl, _ = net(nf, build_edge(nf), nm, am)
+        tgt = tl[0].argmax(-1).cpu().numpy()
+        frac = fl[0].argmax(-1).cpu().numpy()
+        return decode_action(enc, obs, obs["player"], tgt, frac, capture_size=True)
+
+    wins = 0
+    ev = OrbitEnv(max_steps=max_steps)
+    for i in range(games):
+        net_side = 0 if i % 2 == 0 else 1   # alternate sides to remove side bias
+        ev.reset(seed=seed_base + i)
+        done = False
+        while not done:
+            o0, o1 = ev.obs_for(0), ev.obs_for(1)
+            if net_side == 0:
+                m0, m1 = greedy_moves(o0), (opp_fn(o1) or [])
+            else:
+                m0, m1 = (opp_fn(o0) or []), greedy_moves(o1)
+            _, done = ev.step(m0, m1)
+        tr = ev._terminal_reward()          # +5 if player 0 won, -5 if player 1
+        net_won = (tr > 0) if net_side == 0 else (tr < 0)
+        wins += 1 if net_won else 0
+    if was_training:
+        net.train()
+    return wins / max(games, 1)
+
+
 def collect_episode(net, opp_net, env, seed, dev, gamma=0.99, lam=0.95, opp_fn=None):
     obs0, obs1 = env.reset(seed=seed)
     traj = []
@@ -253,6 +296,18 @@ def main():
     ap.add_argument("--save-every", type=int, default=25, dest="save_every",
                     help="also write a numbered snapshot every N iters (e.g. ppo_self_it50.pt) "
                          "so a noisy selector can't lose a good policy. 0 = off.")
+    ap.add_argument("--teacher-frac", type=float, default=0.5, dest="teacher_frac",
+                    help="ONLY for --opponent self. Fraction of each iter's episodes played "
+                         "vs the TEACHER instead of the frozen self-snapshot. This ANCHORS "
+                         "self-play to the real objective so the policy can't drift off and "
+                         "forget how to beat the teacher (the failure that pinned bench at "
+                         "0.40). 0.0 = pure self-play (drifts), 1.0 = pure teacher (plateaus), "
+                         "~0.5 = self-play pressure while staying on-objective.")
+    ap.add_argument("--eval-fast", action="store_true", dest="eval_fast",
+                    help="run the benchmark eval on the FAST comet-free simulator instead of "
+                         "the real env. Much cheaper, so you can --eval-every 1 or 2 and watch "
+                         "the trend live. It's a proxy (ignores comets); confirm winners with "
+                         "submit_agent at 300 games.")
     ap.add_argument("--debug", action="store_true", help="verbose per-iteration diagnostics")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -285,11 +340,15 @@ def main():
           f"eps/iter={args.episodes_per_iter} minibatch={args.minibatch} "
           f"target_kl={args.target_kl}")
     if args.eval_every > 0:
+        mode = "FAST sim (proxy)" if args.eval_fast else "real env (true)"
         print(f"selection: GREEDY benchmark vs {args.eval_opponent} every {args.eval_every} "
-              f"iters ({args.eval_games} games, seeds {args.eval_seed_base}.."
+              f"iters ({args.eval_games} games, {mode}, seeds {args.eval_seed_base}.."
               f"{args.eval_seed_base + args.eval_games - 1}) -> _best by benchmark win-rate")
     else:
         print("selection: by training win_rate (NOTE: meaningless for self-play)")
+    if args.opponent == "self":
+        print(f"anchored self-play: {args.teacher_frac:.0%} of episodes vs teacher, "
+              f"{1-args.teacher_frac:.0%} vs frozen self snapshot")
     seed = args.seed_start
     best_wr = -1.0
     best_bench = -1.0
@@ -338,8 +397,16 @@ def main():
         ep_rewards = []
         wins = 0
         dbgs = []
-        for _ in range(args.episodes_per_iter):
-            traj, adv, ret, dbg = collect_episode(net, opp, env, seed, dev, opp_fn=opp_fn)
+        for ep_i in range(args.episodes_per_iter):
+            # Anchored self-play: play a fraction of episodes vs the TEACHER so the
+            # policy keeps optimizing the real objective and can't drift off into
+            # beating-only-itself (which collapsed bench to 0.40). Only applies when
+            # --opponent self; otherwise opp_fn is fixed.
+            if opp_fn is None and args.teacher_frac > 0.0:
+                ep_opp_fn = ow_base.net_roi_support if (np.random.rand() < args.teacher_frac) else None
+            else:
+                ep_opp_fn = opp_fn
+            traj, adv, ret, dbg = collect_episode(net, opp, env, seed, dev, opp_fn=ep_opp_fn)
             seed += 1
             ep_rewards.append(sum(t[2] for t in traj))
             wins += 1 if env._terminal_reward() > 0 else 0
@@ -411,8 +478,13 @@ def main():
         if args.eval_every > 0:
             # meaningful signal: greedy benchmark vs a FIXED opponent on clean seeds.
             if (it + 1) % args.eval_every == 0:
-                bench = benchmark_winrate(net, dev, eval_opp_fn,
-                                          args.eval_games, args.eval_seed_base)
+                if args.eval_fast:
+                    bench = benchmark_winrate_fast(net, dev, eval_opp_fn,
+                                                   args.eval_games, args.eval_seed_base,
+                                                   args.max_steps)
+                else:
+                    bench = benchmark_winrate(net, dev, eval_opp_fn,
+                                              args.eval_games, args.eval_seed_base)
                 if bench > best_bench:
                     best_bench = bench
                     torch.save({"model": net.state_dict(), "opt": opt.state_dict()},
