@@ -11,7 +11,10 @@
       "Bash(C:/Users/ruben/AppData/Local/Programs/Python/Python313/python.exe -c \"import torch; print\\('torch', torch.__version__\\); import kaggle_environments; print\\('kaggle_envs', kaggle_environments.__version__\\)\")",
       "Bash(conda env *)",
       "Read(//c/Users/ruben/anaconda3/**)",
-      "Read(//c/Users/ruben/miniconda3/**)"
+      "Read(//c/Users/ruben/miniconda3/**)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); print\\('parse OK'\\)\")",
+      "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory//**)",
+      "Read(//c/Users/ruben/.claude/projects/C--Users-ruben-Kaggle/memory/**)"
     ]
   }
 }

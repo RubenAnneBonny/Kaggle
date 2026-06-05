@@ -160,6 +160,15 @@ agent that engages comet mechanics. The rest of the `net_attacker*` /
 `net_roi_*` family are micro-iterations of the teacher and would dilute signal
 without adding strategic information.
 
+Before the first PPO step, a **baseline benchmark** runs so you can see where
+the warm-start stands, and it seeds `ppoN_best.pt` with the warm-start weights —
+a diverging run can no longer overwrite `_best` with something worse than where
+it began:
+
+```
+[baseline] bench vs teacher 0.45 [external:rl_v1 0.40  nearest_planet 0.85]  (saved _best)
+```
+
 Both runs write a rolling `ppoN_itXXXX.pt` every `--save-every` iters and
 overwrite `ppoN_best.pt` whenever the greedy benchmark vs **teacher** improves
 (the primary eval). The log line per eval tick looks like:
@@ -220,8 +229,8 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   fraction, comet-safe, coordinated), and the n-player 500-step `OrbitEnv`.
 - `bc.py` — Stage 1 behavioral cloning of the aggressive teacher; attack-weighted
   target CE + Beta-NLL fraction loss; `--players {2,4}`.
-- `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup, KL
-  early-stop, minibatched updates. Opponents are drawn per slot per episode
+- `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup,
+  **per-minibatch KL gate**, minibatched updates. Opponents are drawn per slot per episode
   from a rolling self-snapshot league (`--league-size`), an optional scripted
   mix (`--mix-teacher/aggressive/weak`, plus any other `ow_base` callable via
   `--mix-scripted NAME:WEIGHT`), and any external `agent(obs)` callable
@@ -276,6 +285,17 @@ a fixed stable opponent** (teacher), but **watch additional benchmarks
 alongside it** (rl_v1 = "am I beating my own prior submission?", nearest = "am
 I still trivially handling weak opponents?"). A single number hides regressions
 and stalls that show up clearly across a difficulty ladder.
+
+New in v2 (divergence fix): **gate KL per minibatch, not per epoch.** The old
+check only fired after a full epoch (~batch/minibatch optimizer steps), by which
+point a warm-started — and therefore very peaked — BC policy had already drifted
+to KL ≫ `target_kl`. Now `target_kl` is checked after every minibatch and stops
+the moment cumulative drift from the collection policy exceeds it, bounding the
+update to ~`target_kl`. Two amplifiers make a warm-started policy fragile here:
+(1) BC-peaked target logits flip on tiny weight moves, and (2) the **value head
+shares the transformer trunk**, so a large early value loss yanks the policy
+through the shared encoder — lower `--vf-coef` (e.g. 0.25) and/or `--lr` (e.g.
+3e-5) for the first fine-tuning phase if KL is erratic.
 
 New in v2: the engine rotates planets on the **pre-increment** step (fix your
 simulator's tick order or everything drifts); **comets follow paths, not

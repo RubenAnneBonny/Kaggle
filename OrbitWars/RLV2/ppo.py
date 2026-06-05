@@ -292,6 +292,9 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--clip", type=float, default=0.2)
     ap.add_argument("--ent", type=float, default=0.01)
+    ap.add_argument("--vf-coef", type=float, default=0.5, dest="vf_coef",
+                    help="value-loss weight; lower (~0.25) if value grads through the "
+                         "shared trunk destabilize a peaked warm-started policy")
     ap.add_argument("--minibatch", type=int, default=128)
     ap.add_argument("--target-kl", type=float, default=0.03, dest="target_kl")
     ap.add_argument("--max-grad-norm", type=float, default=0.5, dest="max_grad_norm")
@@ -415,7 +418,7 @@ def main():
 
     opp_draw = _make_draw() if mix_active else (lambda: opp)
 
-    print(f"[{args.players}p] opponent={args.opponent} | lr={args.lr} ent={args.ent} clip={args.clip}"
+    print(f"[{args.players}p] opponent={args.opponent} | lr={args.lr} ent={args.ent} clip={args.clip} vf={args.vf_coef}"
           f" | eps/iter={args.episodes_per_iter} mb={args.minibatch} kl={args.target_kl}"
           f" | coord_cap={coord_cap} hard_skip={args.hard_skip} max_steps={args.max_steps}")
     if mix_active:
@@ -467,6 +470,22 @@ def main():
                 print(f"[warmup] epoch {ep:3d}  value_loss {vloss_sum/len(wbatch):.3f}")
         print("[warmup] done.")
 
+    # ===== baseline benchmark (where the warm-start stands BEFORE any PPO step) =====
+    # Establishes the starting win-rate and seeds _best with the warm-start, so a
+    # diverging run can't overwrite _best with something worse than where we began.
+    if args.eval_every > 0 and args.eval_games > 0:
+        base = benchmark_winrate(net, dev, eval_opp_fn, args.eval_games,
+                                 args.players, args.eval_off)
+        best_bench = base
+        torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
+                    "players": args.players}, _suffix("best"))
+        extras = []
+        for spec, fn in bench_also:
+            wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
+            extras.append((spec, wr))
+        es = (" [" + "  ".join(f"{n} {w:.2f}" for n, w in extras) + "]") if extras else ""
+        print(f"[baseline] bench vs {args.eval_opponent} {base:.2f}{es}  (saved _best)")
+
     for it in range(args.iters):
         batch, ep_rewards, wins, dbgs = [], [], 0, []
         for _ in range(args.episodes_per_iter):
@@ -484,10 +503,13 @@ def main():
 
         stopped_epoch = args.epochs
         mean_kl = 0.0
+        kl_hist = []          # one entry per applied minibatch (drift from collection policy)
+        stop = False
         for ep in range(args.epochs):
-            np.random.shuffle(batch); kl_sum, kl_n = 0.0, 0
+            np.random.shuffle(batch)
             for s in range(0, len(batch), args.minibatch):
                 chunk = batch[s:s + args.minibatch]; opt.zero_grad()
+                mb_kl_sum, mb_n = 0.0, 0
                 for cache, old_logp_per, advt, rett in chunk:
                     logp_per, active, val, ent = recompute_logp_value(net, cache, dev)
                     a_t = torch.tensor(advt, device=dev, dtype=torch.float32)
@@ -497,14 +519,23 @@ def main():
                     denom = active.sum().clamp(min=1)
                     pol = (-torch.min(s1, s2) * active).sum() / denom
                     vloss = F.mse_loss(val, torch.tensor(rett, device=dev, dtype=torch.float32))
-                    ((pol + 0.5 * vloss - args.ent * ent) / len(chunk)).backward()
+                    ((pol + args.vf_coef * vloss - args.ent * ent) / len(chunk)).backward()
                     with torch.no_grad():
-                        kl_sum += float(((old_logp_per - logp_per) * active).sum() / denom); kl_n += 1
+                        mb_kl_sum += float(((old_logp_per - logp_per) * active).sum() / denom); mb_n += 1
+                mb_kl = mb_kl_sum / max(mb_n, 1)
+                # PER-MINIBATCH KL GATE. mb_kl is total drift from the collection
+                # policy measured at this minibatch's weights (i.e. BEFORE this step).
+                # If we're already past target, stop without applying another step —
+                # this bounds drift to ~target_kl instead of letting a whole epoch
+                # (~batch/minibatch steps) overshoot before the old per-epoch check.
+                if args.target_kl > 0 and mb_kl > args.target_kl:
+                    stop = True; break
+                kl_hist.append(mb_kl)
                 torch.nn.utils.clip_grad_norm_(net.parameters(), args.max_grad_norm)
                 opt.step()
-            mean_kl = kl_sum / max(kl_n, 1)
-            if args.target_kl > 0 and mean_kl > args.target_kl:
+            if stop:
                 stopped_epoch = ep + 1; break
+        mean_kl = float(np.mean(kl_hist)) if kl_hist else 0.0
 
         if refreshable or mix_active:
             add_every = args.league_add_every or args.refresh
