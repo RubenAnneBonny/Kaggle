@@ -129,7 +129,7 @@ games naturally vary in composition.
 # ---- 2-player ----
 python ppo.py --players 2 --init bc2_best.pt --opponent self `
   --league-size 12 --league-add-every 20 `
-  --vf-coef 0.25 --lr 3e-5 --warmup-cache ppo2_warmup.pt `
+  --vf-coef 0.25 --lr 3e-5 --warmup-lr 1e-3 --warmup-cache ppo2_warmup.pt `
   --mix-teacher 0.15 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
@@ -141,7 +141,7 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self `
 # ---- 4-player (after bc4 finishes) ----
 python ppo.py --players 4 --init bc4_best.pt --opponent self `
   --league-size 16 --league-add-every 20 `
-  --vf-coef 0.25 --lr 3e-5 --warmup-cache ppo4_warmup.pt `
+  --vf-coef 0.25 --lr 3e-5 --warmup-lr 1e-3 --warmup-cache ppo4_warmup.pt `
   --mix-teacher 0.12 --mix-aggressive 0.08 --mix-weak 0.05 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
