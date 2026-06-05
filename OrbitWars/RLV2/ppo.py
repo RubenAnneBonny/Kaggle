@@ -327,6 +327,11 @@ def main():
     ap.add_argument("--out", default="ppo.pt")
     ap.add_argument("--value-warmup", type=int, default=100, dest="value_warmup")
     ap.add_argument("--warmup-games", type=int, default=6, dest="warmup_games")
+    ap.add_argument("--warmup-cache", default=None, dest="warmup_cache",
+                    help="path to cache the post-warmup net. If the file exists it is "
+                         "loaded and warmup is SKIPPED; otherwise warmup runs and is saved "
+                         "there. Valid only for the same --init and opponent mix — lr/vf-coef "
+                         "do NOT affect warmup, so one cache is reusable across hp sweeps.")
     ap.add_argument("--eval-every", type=int, default=10, dest="eval_every")
     ap.add_argument("--eval-games", type=int, default=40, dest="eval_games")
     ap.add_argument("--eval-opponent", default="teacher", dest="eval_opponent")
@@ -442,8 +447,25 @@ def main():
     seed_i = args.train_off
     best_bench = -1.0
 
-    # ===== one-shot value warmup =====
-    if args.value_warmup > 0:
+    # ===== one-shot value warmup (optionally cached to disk for reuse) =====
+    # The warmup-calibrated value head depends ONLY on the init policy and the
+    # opponent mix (NOT on lr/vf-coef/clip), so one cache is valid across an hp
+    # sweep. We store init+mix to warn on a mismatch.
+    cache_path = args.warmup_cache
+    if cache_path and os.path.exists(cache_path):
+        ck = torch.load(cache_path, map_location=dev)
+        net.load_state_dict(ck["model"])
+        if "opt" in ck:
+            opt.load_state_dict(ck["opt"])
+        seed_i += args.warmup_games          # keep training seeds aligned with a fresh warmup
+        if ck.get("init") not in (None, args.init):
+            print(f"  WARNING: warmup cache built from init={ck.get('init')}, now init={args.init}")
+        if ck.get("mix") is not None and ck["mix"] != mix_weights:
+            print(f"  WARNING: warmup cache built under a DIFFERENT opponent mix — value "
+                  f"calibration may be stale (cached {ck['mix']} vs now {mix_weights})")
+        print(f"[warmup] reused cache {cache_path} — skipped {args.warmup_games}-game collect "
+              f"+ {args.value_warmup}-epoch value train")
+    elif args.value_warmup > 0:
         print(f"[warmup] collecting {args.warmup_games} games for value calibration...")
         wbatch, wwins = [], 0
         for _ in range(args.warmup_games):
@@ -469,6 +491,11 @@ def main():
             if ep % max(1, args.value_warmup // 10) == 0 or ep == args.value_warmup - 1:
                 print(f"[warmup] epoch {ep:3d}  value_loss {vloss_sum/len(wbatch):.3f}")
         print("[warmup] done.")
+        if cache_path:
+            torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
+                        "players": args.players, "init": args.init, "mix": mix_weights},
+                       cache_path)
+            print(f"[warmup] cached to {cache_path} (reuse later with --warmup-cache {cache_path})")
 
     # ===== baseline benchmark (where the warm-start stands BEFORE any PPO step) =====
     # Establishes the starting win-rate and seeds _best with the warm-start, so a

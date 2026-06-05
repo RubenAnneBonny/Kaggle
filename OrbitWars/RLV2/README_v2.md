@@ -129,7 +129,7 @@ games naturally vary in composition.
 # ---- 2-player ----
 python ppo.py --players 2 --init bc2_best.pt --opponent self `
   --league-size 12 --league-add-every 20 `
-  --vf-coef 0.25 --lr 3e-5 `
+  --vf-coef 0.25 --lr 3e-5 --warmup-cache ppo2_warmup.pt `
   --mix-teacher 0.15 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
@@ -141,7 +141,7 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self `
 # ---- 4-player (after bc4 finishes) ----
 python ppo.py --players 4 --init bc4_best.pt --opponent self `
   --league-size 16 --league-add-every 20 `
-  --vf-coef 0.25 --lr 3e-5 `
+  --vf-coef 0.25 --lr 3e-5 --warmup-cache ppo4_warmup.pt `
   --mix-teacher 0.12 --mix-aggressive 0.08 --mix-weak 0.05 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 `
   --mix-scripted comet_user:0.05 `
@@ -158,6 +158,16 @@ learning rate keeps the peaked target logits from flipping. Combined with the
 per-minibatch KL gate (`--target-kl`, default 0.03), they keep the run from
 diverging. Once `kl` is stably under target and `bench` climbs, you can nudge
 `--lr` back toward `1e-4` and `--vf-coef` toward `0.5` (the defaults) to speed up.
+
+`--warmup-cache PATH` makes the one-shot value warmup reusable: the first run
+collects the calibration games, trains the value head, and saves the result to
+`PATH`; every later run with the same `PATH` **loads it and skips warmup**. The
+warmup depends only on `--init` and the opponent mix — **not** on `--lr`,
+`--vf-coef`, `--clip`, etc. — so a single cache is valid across an entire
+hyperparameter sweep (the run stamps `init` + `mix` into the file and warns if
+either changed). This is the recommended way to iterate: pay the warmup cost
+once, then sweep lr/vf/clip for free. Delete the cache file to force a rebuild
+(e.g. after retraining `bc2_best.pt` or changing the `--mix-*` weights).
 
 The 2p mix per slot: 15% teacher, 5% defender (turtle), 5% most_production
 (economic priority), 5% comet_user (comet-aware), 15% RL-v1 submission, 55%
@@ -239,8 +249,9 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   fraction, comet-safe, coordinated), and the n-player 500-step `OrbitEnv`.
 - `bc.py` — Stage 1 behavioral cloning of the aggressive teacher; attack-weighted
   target CE + Beta-NLL fraction loss; `--players {2,4}`.
-- `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup,
-  **per-minibatch KL gate**, minibatched updates. Opponents are drawn per slot per episode
+- `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup
+  (cacheable via `--warmup-cache`), **per-minibatch KL gate**, minibatched
+  updates. Opponents are drawn per slot per episode
   from a rolling self-snapshot league (`--league-size`), an optional scripted
   mix (`--mix-teacher/aggressive/weak`, plus any other `ow_base` callable via
   `--mix-scripted NAME:WEIGHT`), and any external `agent(obs)` callable
