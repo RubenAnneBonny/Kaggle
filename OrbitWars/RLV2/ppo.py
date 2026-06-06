@@ -358,9 +358,11 @@ def main():
                          "repeatable; logged but does not drive _best")
     ap.add_argument("--eval-seed-offset", type=int, default=0, dest="eval_off")
     ap.add_argument("--early-stop-patience", type=int, default=0, dest="early_stop_patience",
-                    help="stop when the PRIMARY benchmark (--eval-opponent) hasn't set a new "
-                         "best for this many eval ticks (0 = never). Used to auto-end phase-1 "
-                         "once it has plateaued — it only needs to be 'good enough' to seed phase-2.")
+                    help="stop when the PRIMARY benchmark (--eval-opponent) hasn't set a new best "
+                         "for this many EVAL TICKS (0 = never). A tick is --eval-every iters apart, "
+                         "so the no-improvement window is patience*eval-every iters. Used to "
+                         "auto-end phase-1 once it has plateaued — it only needs to be 'good "
+                         "enough' to seed phase-2.")
     ap.add_argument("--save-every", type=int, default=25, dest="save_every")
     ap.add_argument("--log-every", type=int, default=1, dest="log_every")
     ap.add_argument("--debug", action="store_true")
@@ -672,9 +674,10 @@ def main():
             print(line)
 
         if early_stop_now:
-            print(f"[early-stop] primary bench '{args.eval_opponent}' set no new best in "
-                  f"{no_improve_ticks} eval ticks (best {best_wr.get(args.eval_opponent, -1.0):.2f}); "
-                  f"stopping at iter {it} -> phase-1 done, seeding phase-2")
+            print(f"[early-stop] '{args.eval_opponent}' bench set no new best for "
+                  f"{no_improve_ticks} eval ticks (~{no_improve_ticks * args.eval_every} iters); "
+                  f"best {best_wr.get(args.eval_opponent, -1.0):.2f}; stopping at iter {it} "
+                  f"-> phase-1 done, seeding phase-2")
             break
 
     torch.save({"model": net.state_dict(), "players": args.players}, args.out)

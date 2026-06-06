@@ -21,7 +21,7 @@ python -u ppo.py --players 4 --init bc4_best.pt --opponent self `
   --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.05 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-cache ppo4_phase1_warmup.pt `
   --mix-scripted nearest_planet_smart:0.20 --mix-scripted comet_user:0.20 `
-  --eval-every 5 --eval-games 30 `
+  --eval-every 3 --eval-games 40 `
   --eval-opponent nearest_planet --bench-also teacher `
   --early-stop-patience 8 --iters 400 --out ppo4_phase1.pt |
     Tee-Object -FilePath ppo4_phase1.log
