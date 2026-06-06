@@ -200,10 +200,19 @@ class OrbitEnv:
     """Fast self-play env over the faithful (comet-bearing) simulator.
 
     Supports 2 OR 4 players. Reward is returned from a FOCAL player's view
-    (default 0): a small potential-style shaping on (my_score - best_opponent
-    score) plus a dominant terminal +/-5 decided exactly like the engine
-    (highest positive ship total wins; ties count as wins, matching reward=+1)."""
-    def __init__(self, max_steps=500, num_players=2, shaping=0.003, focal=0):
+    (default 0): a small potential-style shaping on the NORMALIZED lead (focal's
+    share of the focal-vs-best-rival ship total, bounded in (-1, 1)) plus a
+    dominant terminal +/-5 decided exactly like the engine (highest positive ship
+    total wins; ties count as wins, matching reward=+1).
+
+    The lead is normalized on purpose: an UNNORMALIZED ship-count lead reaches
+    tens of thousands in long games, so the telescoped shaping hit +/-100 and
+    swamped the terminal ~20x. That made the return high-variance and dominated by
+    game length (long game == loss), so no value head could fit it (explained
+    variance ~0) and PPO advantages were pure noise. The normalized potential
+    keeps the per-step shaping O(0.01) and bounded, restoring a predictable return
+    where the terminal +/-5 dominates."""
+    def __init__(self, max_steps=500, num_players=2, shaping=1.0, focal=0):
         assert num_players in (2, 4)
         self.max_steps = max_steps
         self.num_players = num_players
@@ -226,9 +235,13 @@ class OrbitEnv:
         return _obs_from_state(self.st, player)
 
     def _lead(self, me):
+        """Normalized lead in (-1, 1): focal's share of the (focal vs best-rival)
+        ship total. Bounded and production-invariant, so the per-step shaping stays
+        O(0.01) instead of scaling with raw ship counts (see class docstring)."""
         mine = _score(self.st, me)
         others = [_score(self.st, p) for p in range(self.num_players) if p != me]
-        return mine - (max(others) if others else 0)
+        best = max(others) if others else 0
+        return (mine - best) / (mine + best + 1.0)
 
     def step(self, moves_by_player):
         """moves_by_player: list/dict of move-lists, one per player slot."""

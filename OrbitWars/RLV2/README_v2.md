@@ -128,6 +128,13 @@ Each does three stages, logging live to per-stage `.log` files:
    from phase-1's best, running **indefinitely** until you `Ctrl-C`. Saves
    `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
 
+`run_2p_resume.ps1` is the same pipeline **minus BC**: it warm-starts phase-1
+from an existing `bc2_best.pt`. Use it to re-launch the PPO phases — e.g. after an
+hp change — without paying for a BC retrain. It still rebuilds the **value-warmup**
+each run (the cache is keyed to the reward + opponent mix; reusing a stale one
+mis-calibrates the value head). The BC checkpoint is reward-independent, so it is
+safely reused.
+
 The stages below document the individual commands the orchestrator runs.
 
 ### Stage 1 — Behavioral cloning
@@ -269,6 +276,16 @@ my own prior submission yet?", nearest = "am I still trivially handling weak
 opponents, or did self-play break the basics?". `*saved ...` lists which best
 files were written this tick.
 
+`ev` is the value head's **explained variance** on the iter's collected states —
+the single most diagnostic PPO health number. `ev ≤ 0` means the value baseline
+explains none of the return variance, so the GAE advantages are noise and the
+policy **cannot** learn no matter how you tune lr/ent/kl (this was the original
+"stuck in phase-1" failure, caused by the unbounded reward — see the `shaping`
+note in Knobs). With the normalized reward it should climb off ~0 within the
+first few dozen iters as the value head warms in; >0.5 is healthy. If `ev` stays
+pinned ≤0, the return is the problem, not the hyperparameters. Run `diag.py` for
+the full reward/advantage breakdown.
+
 **Eval-games sizing.** A win-rate over `n` games has resolution `1/n` and a
 representativeness spread of `√(p(1−p)/n)`: at `n=20` that's 5 pp steps and
 ≈ ±11 pp; at `n=40`, 2.5 pp and ≈ ±8 pp. Since **every** benchmark now drives a
@@ -286,6 +303,34 @@ total eval cost (≈ 24 games/iter) close to the old `20 / every-3` setting whil
 getting finer resolution. Use `--eval-every 3` for more responsiveness (≈ 40
 games/iter), drop `--eval-games` if you must pay less, or `--eval-every 1` for
 per-iter granularity at ~120 games/iter.
+
+**Where the wall-clock goes, and the batched path (measured, `prof.py` /
+`bench_collect.py`).** The training loop now uses **batched forwards** everywhere:
+collection steps all `episodes_per_iter` games in lockstep through one `B`-sized
+focal forward (`collect_batched`), and the PPO/value update does one forward per
+*minibatch* instead of one per state (`_batched_policy` / `_batched_value`). The
+math is bit-equivalent to the old per-state path (`test_batched.py`: max |Δ| ~1e-5).
+Measured on a 2p run:
+
+| stage | per-state (old) | batched (new) | speedup |
+|---|---|---|---|
+| update, one 128-state minibatch | 1743 ms | 98 ms | **17.7×** |
+| collection, 16 games | 61.9 s | 51.5 s | 1.20× |
+
+The **update** was the hidden cost (128 batch-1 forward+backwards per minibatch ×
+~20–40 minibatches/iter = 30–60 s/iter); batching it is the bulk of the ~2× per-iter
+win. **Collection** barely moved because, once the focal forward is batched, it is
+**CPU-bound** — game-sim + `encode`/`decode` Python, not the GPU. So the next lever
+is CPU `multiprocessing` of collection (the BC harvest pattern): ~52 s across ~6
+workers → ~10 s. (Earlier this was a poor fit because the GPU forward dominated;
+after batching the update + forward, collection is CPU-bound and multiprocessing
+is the right tool. The old per-state path — `policy_act` / `collect_episode` /
+`recompute_logp_value` — is kept for `diag.py` / `prof.py`.)
+
+Eval is the other big cost: a greedy game is ~3.7 s, so an 80-game tick ≈ 295 s.
+`run_2p_resume.ps1` phase-1 drops the (informational) teacher bench and uses
+`--eval-every 5 --eval-games 30` — phase-1 only needs to beat `nearest_planet` to
+seed phase-2.
 
 ### Stage 3 — Evaluation and inspection
 
@@ -356,9 +401,18 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   solo-capture-or-skip (forbids coordination).
 - `AGGR_EXTRA_SPARE`, `AGGR_MIN_ATTACK_FRAC` (ow_base) — how aggressive the BC
   teacher is.
-- `shaping` (OrbitEnv, default 0.003) — potential-style reward on
-  `(my_score − best_opponent_score)`; the terminal ±5 (engine rule: highest
-  positive ship total wins, ties win) dominates.
+- `shaping` (OrbitEnv, default 1.0) — potential-style reward on the **normalized**
+  lead `(my_score − best_opponent) / (my_score + best_opponent + 1)`, bounded in
+  (−1, 1); the terminal ±5 (engine rule: highest positive ship total wins, ties
+  win) dominates. **The normalization is load-bearing**, not cosmetic: the lead was
+  previously the raw ship-count difference, which reached tens of thousands in long
+  games, so the telescoped shaping hit ±100 and swamped the terminal ~20×. That
+  made returns dominated by game length (long game ⇒ loss) rather than move quality,
+  the value head could not fit them (explained variance ≈ 0), and PPO advantages
+  were pure noise — the policy random-walked and never learned (the classic
+  "stuck in phase-1" failure). Bounding the potential restores a predictable return
+  where the terminal dominates. Verify health with `diag.py` (watch the **value
+  explained variance** line: ≤0 ⇒ advantages are noise; >0.5 is healthy).
 - `--league-size` (ppo.py, default `1`) — rolling FIFO pool of self-snapshots.
   `1` reproduces the old single-opp behavior; `>1` enables league play.
 - `--league-add-every` (ppo.py, default `0`) — iters between appends. `0` falls
@@ -382,6 +436,12 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   writes the canonical `ppoN_best.pt` (the submit target).
 - `--warmup-lr` (ppo.py, default `1e-3`) — LR for the value-head warmup only;
   decoupled from `--lr` so a low policy lr doesn't under-calibrate the value head.
+- `--ent` (ppo.py, default `0.01`) — entropy bonus, applied as a **per-owned-node
+  mean** (normalized by the focal player's owned-planet count, matching the policy
+  loss). It is therefore board-size independent: `0.01` means the same exploration
+  pressure whether the player owns 3 planets or 30. See the lessons note below —
+  before the normalization fix this term was a raw *sum*, so the effective weight
+  was `ent × n_own` and even `0.01` quietly behaved like ~`0.1`.
 
 ## Hard-won lessons
 
@@ -405,6 +465,20 @@ update to ~`target_kl`. Two amplifiers make a warm-started policy fragile here:
 shares the transformer trunk**, so a large early value loss yanks the policy
 through the shared encoder — lower `--vf-coef` (e.g. 0.25) and/or `--lr` (e.g.
 3e-5) for the first fine-tuning phase if KL is erratic.
+
+**Normalize the entropy bonus the same way as the policy loss.** The policy loss
+is a *mean* over owned nodes (`sum / denom`), but the entropy term was a raw *sum*
+over owned nodes — so the effective entropy weight was `ent × n_own` and grew with
+the board. With a player owning ~10–15 planets, a nominal `ent=0.05` acted like
+~0.5, overwhelming the (normalized, noisy) advantage signal: a single step blew
+past `target_kl`, and the only coherent gradient left was "increase entropy." The
+tell is **monotone** collapse from iter 0 — `entH` rising, `hold%` and `conc`
+falling together, `train_wr`→0, and the benchmark never once beating the warm
+start (a value/advantage problem degrades *noisily* instead). Fix: divide the
+entropy sum by the owned-node count in `recompute_logp_value`, so `--ent` is a
+true per-node coefficient. Lowering `--ent` alone only masks this — the scale
+still grows with the board, which bites hardest in phase-2 when the focal player
+controls many planets.
 
 Expect `early-stop @ep1` on (almost) every iter, and that's *healthy*, not a bug:
 a peaked policy saturates the `target_kl` trust region partway through the first

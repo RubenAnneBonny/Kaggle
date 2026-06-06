@@ -131,8 +131,139 @@ def recompute_logp_value(net, cache, dev):
     logp_f = fd.log_prob(cache["frac"])
     logp_per = logp_t * own.float() + logp_f * frac_active.float()
     active = own.float()
-    ent = (td.entropy() * own.float()).sum() + (fd.entropy() * frac_active.float()).sum()
+    # Per-owned-node MEAN entropy (not a sum): the policy loss is averaged over
+    # owned nodes (sum / denom below), so the entropy bonus must be normalized the
+    # same way. A raw sum makes the effective entropy weight scale with how many
+    # planets the focal player owns (~ent*n_own), which silently turns a nominal
+    # 0.05 into ~0.5+ and randomizes the warm-started policy. Dividing by the owned
+    # count keeps --ent a true per-node coefficient, independent of board size.
+    ent = ((td.entropy() * own.float()).sum() + (fd.entropy() * frac_active.float()).sum()) \
+        / active.sum().clamp(min=1)
     return logp_per, active, value[0], ent
+
+
+# --------------------------------------------------------------------------- #
+# Batched collection + update (the GPU-efficient path used by main()).
+#
+# The per-state path above (policy_act / recompute_logp_value) issues ONE batch-1
+# forward per state. Profiling (prof.py) put ~53% of collection wall-clock in that
+# kernel-launch latency on a tiny net. These helpers batch the focal forward across
+# all episodes_per_iter games (collection) and across a whole minibatch (update),
+# turning B batch-1 calls into one B-sized call. The per-node math is identical to
+# the per-state path — each board is padded to N_MAX and attention is masked
+# per-sample (node_mask), so a batched forward is bit-equivalent to looping B
+# single forwards (verified by test_batched.py). Caches here are plain NumPy (cheap
+# to keep thousands of in RAM, only minibatches are moved to the GPU).
+# --------------------------------------------------------------------------- #
+def _stack(caches, key, dev, dtype):
+    return torch.as_tensor(np.stack([c[key] for c in caches]), dtype=dtype, device=dev)
+
+
+def _batched_policy(net, caches, dev, grad):
+    """Re-eval stored (NumPy) caches in one forward. Returns per-node logp (B,N),
+    owned mask (B,N), value (B,), per-sample mean entropy (B,), owned counts (B)."""
+    nf = _stack(caches, "nf", dev, torch.float32)
+    nm = _stack(caches, "nm", dev, torch.float32)
+    am = _stack(caches, "am", dev, torch.float32)
+    own = _stack(caches, "own", dev, torch.float32)
+    fa = _stack(caches, "frac_active", dev, torch.float32)
+    tgt = _stack(caches, "tgt", dev, torch.long)
+    frac = _stack(caches, "frac", dev, torch.float32).clamp(FRAC_EPS, 1 - FRAC_EPS)
+    ctx = contextlib.nullcontext() if grad else torch.no_grad()
+    with ctx:
+        edge = build_edge(nf)
+        tgt_logits, frac_ab, value = net(nf, edge, nm, am)
+        td = torch.distributions.Categorical(logits=tgt_logits)
+        fd = frac_dist(frac_ab)
+        logp_per = td.log_prob(tgt) * own + fd.log_prob(frac) * fa     # (B,N)
+        denom = own.sum(1).clamp(min=1)                                # (B,)
+        ent = ((td.entropy() * own).sum(1) + (fd.entropy() * fa).sum(1)) / denom
+    return logp_per, own, value, ent, denom
+
+
+def _batched_value(net, caches, dev):
+    """Value-only batched forward (warmup); grad flows, caller zeroes non-value grads."""
+    nf = _stack(caches, "nf", dev, torch.float32)
+    nm = _stack(caches, "nm", dev, torch.float32)
+    am = _stack(caches, "am", dev, torch.float32)
+    _, _, value = net(nf, build_edge(nf), nm, am)
+    return value
+
+
+def collect_batched(net, opp_draw, envs, seeds, dev, gamma=0.99, lam=0.95):
+    """Run len(envs) games in lockstep, batching the focal forward across all
+    still-active games each step. Returns a list of (traj, adv, ret, dbg) — one per
+    game, same shape collect_episode returns — and leaves each env in its terminal
+    state (so the caller can read env._terminal_reward(0) for the win flag)."""
+    B = len(envs)
+    for env, seed in zip(envs, seeds):
+        env.reset(seed=seed)
+    P = envs[0].num_players
+    slot_opps = [[opp_draw() for _ in range(P - 1)] for _ in range(B)]
+    trajs = [[] for _ in range(B)]
+    active = [True] * B
+    while any(active):
+        idxs = [b for b in range(B) if active[b]]
+        obs0 = [envs[b].obs_for(0) for b in idxs]
+        encs = [encode_state(o, 0) for o in obs0]
+        nf = torch.as_tensor(np.stack([e["node_feats"] for e in encs]), device=dev)
+        nm = torch.as_tensor(np.stack([e["node_mask"] for e in encs]), device=dev)
+        am = torch.as_tensor(np.stack([e["attack_mask"] for e in encs]), device=dev)
+        with torch.no_grad():
+            tgt_logits, frac_ab, value = net(nf, build_edge(nf), nm, am)
+        for k, b in enumerate(idxs):
+            enc = encs[k]; obs = obs0[k]
+            own = torch.as_tensor(enc["own_mask"], dtype=torch.bool, device=dev)
+            td = torch.distributions.Categorical(logits=tgt_logits[k])
+            fd = frac_dist(frac_ab[k])
+            tgt = td.sample(); frac = fd.sample().clamp(FRAC_EPS, 1 - FRAC_EPS)
+            tgt_np = tgt.detach().cpu().numpy(); frac_np = frac.detach().cpu().numpy()
+            fa_np = _frac_active_mask(enc, tgt_np)
+            fa = torch.as_tensor(fa_np, dtype=torch.float32, device=dev)
+            ownf = own.float()
+            logp_per = td.log_prob(tgt) * ownf + fd.log_prob(frac) * fa
+            n_own = ownf.sum().clamp(min=1)
+            moves0 = _dec(enc, obs, 0, tgt_np, frac_np)
+            diag = dict(n_own=float(ownf.sum()),
+                        hold_frac=float(((tgt == HOLD).float() * ownf).sum() / n_own),
+                        ent_cat=float((td.entropy() * ownf).sum() / n_own),
+                        conc=float((frac_ab[k].sum(-1) * ownf).sum() / n_own),
+                        n_moves=len(moves0))
+            moves = [moves0]
+            for slot in range(1, P):
+                moves.append(slot_opps[b][slot - 1].moves(envs[b].obs_for(slot), slot))
+            r, done = envs[b].step(moves)
+            cache = dict(nf=enc["node_feats"], nm=enc["node_mask"], am=enc["attack_mask"],
+                         own=enc["own_mask"].astype(np.float32),
+                         frac_active=fa_np.astype(np.float32),
+                         tgt=tgt_np.astype(np.int64), frac=frac_np.astype(np.float32),
+                         old_logp_per=logp_per.detach().cpu().numpy().astype(np.float32),
+                         diag=diag)
+            trajs[b].append([float(logp_per.sum()), float(value[k]), r, cache])
+            if done:
+                active[b] = False
+    out = []
+    for b in range(B):
+        traj = trajs[b]
+        adv, gae, nextv = [0.0] * len(traj), 0.0, 0.0
+        for t in reversed(range(len(traj))):
+            v = traj[t][1]
+            delta = traj[t][2] + gamma * nextv - v
+            gae = delta + gamma * lam * gae
+            adv[t] = gae; nextv = v
+        ret = [adv[t] + traj[t][1] for t in range(len(traj))]
+        dg = [t[3]["diag"] for t in traj]
+        dbg = dict(ep_len=len(traj), ret_sum=sum(t[2] for t in traj),
+                   adv_min=min(adv) if adv else 0.0, adv_max=max(adv) if adv else 0.0,
+                   val_min=min(t[1] for t in traj) if traj else 0.0,
+                   val_max=max(t[1] for t in traj) if traj else 0.0,
+                   ret_min=min(ret) if ret else 0.0, ret_max=max(ret) if ret else 0.0,
+                   hold_frac=np.mean([d["hold_frac"] for d in dg]) if dg else 0.0,
+                   ent_cat=np.mean([d["ent_cat"] for d in dg]) if dg else 0.0,
+                   conc=np.mean([d["conc"] for d in dg]) if dg else 0.0,
+                   n_moves=np.mean([d["n_moves"] for d in dg]) if dg else 0.0)
+        out.append((traj, adv, ret, dbg))
+    return out
 
 
 def net_greedy_agent(net, dev):
@@ -389,7 +520,10 @@ def main():
         print(f"loaded external agent '{name}' from {path}")
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
 
-    env = OrbitEnv(max_steps=args.max_steps, num_players=args.players, focal=0)
+    # A persistent pool of envs stepped in lockstep by collect_batched (one per
+    # game in a batch). Reused across iters; reset() rebuilds each game's state.
+    train_envs = [OrbitEnv(max_steps=args.max_steps, num_players=args.players, focal=0)
+                  for _ in range(args.episodes_per_iter)]
     opp, refreshable = build_opponent(args.opponent, self_pool, dev)
     def _resolve_eval_opp(name):
         if name.startswith("external:"):
@@ -526,12 +660,17 @@ def main():
     elif args.value_warmup > 0:
         print(f"[warmup] collecting {args.warmup_games} games for value calibration...")
         wbatch, wwins = [], 0
-        for _ in range(args.warmup_games):
-            traj, adv, ret, _ = collect_episode(net, opp_draw, env, train_seed(seed_i), dev)
-            seed_i += 1
-            wwins += 1 if env._terminal_reward(0) > 0 else 0
-            for t in range(len(traj)):
-                wbatch.append([traj[t][3], ret[t]])
+        collected = 0
+        while collected < args.warmup_games:
+            b = min(args.episodes_per_iter, args.warmup_games - collected)
+            envs_w = train_envs[:b]
+            seeds_w = [train_seed(seed_i + j) for j in range(b)]
+            results = collect_batched(net, opp_draw, envs_w, seeds_w, dev)
+            seed_i += b; collected += b
+            for j, (traj, adv, ret, _dbg) in enumerate(results):
+                wwins += 1 if envs_w[j]._terminal_reward(0) > 0 else 0
+                for t in range(len(traj)):
+                    wbatch.append([traj[t][3], ret[t]])
         print(f"[warmup] {len(wbatch)} states (collect win_rate {wwins/args.warmup_games:.2f}); "
               f"training value head {args.value_warmup} epochs @ lr {args.warmup_lr:g}...")
         for g in opt.param_groups:    # value-only phase: use the dedicated warmup lr
@@ -540,10 +679,10 @@ def main():
             np.random.shuffle(wbatch); vloss_sum = 0.0
             for s in range(0, len(wbatch), args.minibatch):
                 chunk = wbatch[s:s + args.minibatch]; opt.zero_grad()
-                for cache, rett in chunk:
-                    _, _, val, _ = recompute_logp_value(net, cache, dev)
-                    vloss = F.mse_loss(val, torch.tensor(rett, device=dev, dtype=torch.float32))
-                    (vloss / len(chunk)).backward(); vloss_sum += vloss.detach().item()
+                val = _batched_value(net, [c for c, _ in chunk], dev)
+                rett = torch.as_tensor([r for _, r in chunk], device=dev, dtype=torch.float32)
+                vloss = F.mse_loss(val, rett)
+                vloss.backward(); vloss_sum += float(vloss.detach()) * len(chunk)
                 for name, p in net.named_parameters():
                     if not name.startswith("value") and p.grad is not None:
                         p.grad.zero_()
@@ -571,18 +710,29 @@ def main():
 
     for it in range(args.iters):
         batch, ep_rewards, wins, dbgs = [], [], 0, []
-        for _ in range(args.episodes_per_iter):
-            traj, adv, ret, dbg = collect_episode(net, opp_draw, env, train_seed(seed_i), dev)
-            seed_i += 1
+        iter_ret, iter_val = [], []      # for value explained variance (PPO health)
+        # Collect all episodes_per_iter games in lockstep (one batched forward/step).
+        seeds = [train_seed(seed_i + j) for j in range(args.episodes_per_iter)]
+        seed_i += args.episodes_per_iter
+        results = collect_batched(net, opp_draw, train_envs, seeds, dev)
+        for j, (traj, adv, ret, dbg) in enumerate(results):
             ep_rewards.append(sum(t[2] for t in traj))
-            wins += 1 if env._terminal_reward(0) > 0 else 0
+            wins += 1 if train_envs[j]._terminal_reward(0) > 0 else 0
             dbgs.append(dbg)
             for t in range(len(traj)):
-                batch.append([traj[t][3], traj[t][3]["old_logp_per"], adv[t], ret[t]])
-        all_adv = np.array([b[2] for b in batch], dtype=np.float64)
+                batch.append([traj[t][3], adv[t], ret[t]])     # cache holds old_logp_per
+                iter_ret.append(ret[t]); iter_val.append(traj[t][1])
+        # Explained variance of the value head on THIS iter's collected states. This
+        # is the #1 PPO health metric: <=0 means V explains none of the return
+        # variance -> GAE advantages are noise -> the policy can't learn. It should
+        # climb off ~0 within the first few dozen iters once the value head warms in;
+        # if it stays pinned at <=0 the reward/return is the problem, not the hp.
+        _r = np.array(iter_ret); _v = np.array(iter_val)
+        ev = float(1.0 - np.var(_r - _v) / (np.var(_r) + 1e-9))
+        all_adv = np.array([b[1] for b in batch], dtype=np.float64)
         amean, astd = all_adv.mean(), all_adv.std() + 1e-6
         for b in batch:
-            b[2] = (b[2] - amean) / astd
+            b[1] = (b[1] - amean) / astd
 
         stopped_epoch = args.epochs
         mean_kl = 0.0
@@ -591,21 +741,22 @@ def main():
         for ep in range(args.epochs):
             np.random.shuffle(batch)
             for s in range(0, len(batch), args.minibatch):
-                chunk = batch[s:s + args.minibatch]; opt.zero_grad()
-                mb_kl_sum, mb_n = 0.0, 0
-                for cache, old_logp_per, advt, rett in chunk:
-                    logp_per, active, val, ent = recompute_logp_value(net, cache, dev)
-                    a_t = torch.tensor(advt, device=dev, dtype=torch.float32)
-                    ratio = torch.exp(logp_per - old_logp_per)
-                    s1 = ratio * a_t
-                    s2 = torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * a_t
-                    denom = active.sum().clamp(min=1)
-                    pol = (-torch.min(s1, s2) * active).sum() / denom
-                    vloss = F.mse_loss(val, torch.tensor(rett, device=dev, dtype=torch.float32))
-                    ((pol + args.vf_coef * vloss - args.ent * ent) / len(chunk)).backward()
-                    with torch.no_grad():
-                        mb_kl_sum += float(((old_logp_per - logp_per) * active).sum() / denom); mb_n += 1
-                mb_kl = mb_kl_sum / max(mb_n, 1)
+                chunk = batch[s:s + args.minibatch]
+                caches = [c[0] for c in chunk]
+                # ONE batched forward for the whole minibatch (was batch-1 per state)
+                logp_per, own, val, ent, denom = _batched_policy(net, caches, dev, grad=True)
+                old_logp = _stack(caches, "old_logp_per", dev, torch.float32)         # (B,N)
+                a_t = torch.as_tensor([c[1] for c in chunk], device=dev,
+                                      dtype=torch.float32).unsqueeze(1)               # (B,1)
+                rett = torch.as_tensor([c[2] for c in chunk], device=dev, dtype=torch.float32)
+                ratio = torch.exp(logp_per - old_logp)                               # (B,N)
+                s1 = ratio * a_t
+                s2 = torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * a_t
+                pol = ((-torch.min(s1, s2) * own).sum(1) / denom).mean()
+                vloss = F.mse_loss(val, rett)
+                loss = pol + args.vf_coef * vloss - args.ent * ent.mean()
+                with torch.no_grad():
+                    mb_kl = float((((old_logp - logp_per) * own).sum(1) / denom).mean())
                 # PER-MINIBATCH KL GATE. mb_kl is total drift from the collection
                 # policy measured at this minibatch's weights (i.e. BEFORE this step).
                 # If we're already past target, stop without applying another step —
@@ -614,6 +765,7 @@ def main():
                 if args.target_kl > 0 and mb_kl > args.target_kl:
                     stop = True; break
                 kl_hist.append(mb_kl)
+                opt.zero_grad(); loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), args.max_grad_norm)
                 opt.step()
             if stop:
@@ -662,7 +814,7 @@ def main():
             conc = np.mean([d["conc"] for d in dbgs])
             mv = np.mean([d["n_moves"] for d in dbgs])
             line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  train_wr {wr:.2f}"
-                    f"{bs}  {sel}  kl {mean_kl:.4f}"
+                    f"{bs}  {sel}  kl {mean_kl:.4f}  ev {ev:+.2f}"
                     f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}"
                     f"  | hold {hold:.0%} entH {entc:.2f} conc {conc:.1f} mv {mv:.1f}"
                     f"{('  *saved ' + ', '.join(saved_bests)) if saved_bests else ''}")
