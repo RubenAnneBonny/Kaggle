@@ -107,17 +107,62 @@ league + opponent mix from iter 0 — this is the recommended path; the
 single-opponent commands at the bottom are kept for back-compat sanity checks
 only.
 
+### One-command pipeline (recommended)
+
+`run_2p.ps1` (PC) and `run_4p.ps1` (laptop) chain the whole thing end-to-end —
+**run one file and walk away**:
+
+```
+powershell -ExecutionPolicy Bypass -File .\run_2p.ps1     # or run_4p.ps1
+```
+
+Each does three stages, logging live to per-stage `.log` files:
+
+1. **BC** — cached harvest (`--data-cache`), parallel on the PC, plateau
+   early-stop.
+2. **PPO phase-1** — weak/self **curriculum** to lift the warm-start off the
+   floor; **auto-stops** when the `nearest` benchmark plateaus
+   (`--early-stop-patience`), since phase-1 only needs to be "good enough" to
+   seed phase-2. Saves `ppoN_phase1_best.pt`.
+3. **PPO phase-2** — the full hard mix (teacher / rl_v1 / league), warm-started
+   from phase-1's best, running **indefinitely** until you `Ctrl-C`. Saves
+   `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
+
+The stages below document the individual commands the orchestrator runs.
+
 ### Stage 1 — Behavioral cloning
 
 ```
-# ---- 2-player ----
-python bc.py --players 2 --games 800 --epochs 120 --bs 256 --out bc2.pt
+# ---- 2-player (PC: bigger batch + parallel harvest) ----
+python bc.py --players 2 --games 800 --epochs 120 --bs 512 --out bc2.pt `
+  --data-cache bc2_data.npz --patience 8 --min-epochs 20 --harvest-workers 6
 
-# ---- 4-player ----
-python bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt
+# ---- 4-player (laptop: smaller batch, sequential harvest — RAM-tight) ----
+python bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt `
+  --data-cache bc4_data.npz --patience 8 --min-epochs 20
 ```
 
 Each run writes `bcN.pt` (last epoch) and `bcN_best.pt` (best eval).
+
+Speed knobs (the harvest of 800 games is the expensive part, and 120 epochs is
+overkill — the val plateau is usually reached by ~epoch 40):
+
+- `--data-cache PATH.npz` — harvest the 800 games **once** and save the dataset
+  there; every later run loads it and skips harvesting entirely. (Masks are
+  stored as `uint8` and validation is minibatched, so even the 4p dataset stays
+  within a small GPU / laptop RAM.) Delete the `.npz` to re-harvest after
+  changing `--games`/`--players` (it warns on a mismatch).
+- `--patience N` / `--min-epochs M` — **auto-detect the plateau**: stop once val
+  `target_acc` hasn't improved for `N` epochs (never before epoch `M`), instead
+  of always running all `--epochs`. The per-epoch log shows `(no-improve K)` so
+  you can watch it count toward the stop. Default `8`/`20` (≈ stop near epoch 48
+  for a plateau at 40); `--patience 0` runs all epochs.
+- `--harvest-workers W` — parallelize the one-time harvest across `W` processes
+  (`0` = all cores); it's CPU/NumPy-bound so it scales ~linearly, with a
+  sequential fallback on any pool error. Each worker imports torch, so on a
+  RAM-tight machine (the laptop) keep it at `1`; on the PC `6` is a good balance.
+- `--bs` — larger batch (e.g. `512` on an 8 GB GPU) means fewer steps per epoch
+  and better GPU use; the `B×N×N` pairwise tensor still fits.
 
 ### Stage 2 — PPO with rolling league + mixed opponents
 
@@ -269,6 +314,12 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
 
 ## Files
 
+- `run_2p.ps1` / `run_4p.ps1` — one-command pipelines (BC -> PPO phase-1 ->
+  PPO phase-2); see "One-command pipeline" above.
+- `quiet_kaggle.py` — `from quiet_kaggle import make` instead of importing
+  `kaggle_environments` directly; suppresses OpenSpiel's ~200-line import banner
+  (the pyspiel C-extension writes to the OS stderr fd, so it's silenced via
+  fd-level redirection during the import). Used by every module that needs `make`.
 - `seeds.py` — disjoint train/eval seed pools; the one source of truth for which
   seeds are which.
 - `ow_base.py` — v1 helper library, plus v2 additions: `comet_path_map`,
@@ -280,7 +331,9 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
 - `ow_env.py` — `encode_state` (with net-attack), `decode_action` (continuous
   fraction, comet-safe, coordinated), and the n-player 500-step `OrbitEnv`.
 - `bc.py` — Stage 1 behavioral cloning of the aggressive teacher; attack-weighted
-  target CE + Beta-NLL fraction loss; `--players {2,4}`.
+  target CE + Beta-NLL fraction loss; `--players {2,4}`. Harvest is cacheable
+  (`--data-cache`), validation is minibatched, and training plateau-early-stops
+  (`--patience`).
 - `ppo.py` — Stage 2 PPO; Beta fraction, n-player rollouts, value warmup
   (cacheable via `--warmup-cache`), **per-minibatch KL gate**, minibatched
   updates. Opponents are drawn per slot per episode

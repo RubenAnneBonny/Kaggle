@@ -8,3 +8,4 @@ __pycache__/
 *.log
 *_warmup.pt
 *_it[0-9]*.pt
+*_data.npz      # cached BC harvest (large, machine-local; re-harvested on demand)

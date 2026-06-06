@@ -9,7 +9,7 @@ Usage:
   python replay.py --players 4 --model ppo4_best.pt --slot 0 --seed-idx 3
 """
 import argparse, contextlib, io, numpy as np, torch
-from kaggle_environments import make
+from quiet_kaggle import make          # suppresses the OpenSpiel import banner
 from model import OrbitNet, build_edge, frac_dist
 from ow_env import encode_state, decode_action, FRAC_FLOOR
 from seeds import eval_seed

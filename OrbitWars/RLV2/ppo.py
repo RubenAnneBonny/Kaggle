@@ -238,7 +238,7 @@ def benchmark_winrate(net, dev, eval_opp_fn, games, num_players, seed_offset=0):
     other slots, over real-env games. Rotates the focal slot for fairness. Uses
     the EVAL seed pool (disjoint from training). Win = focal reward == +1
     (engine: highest positive ship total; ties win)."""
-    from kaggle_environments import make
+    from quiet_kaggle import make
     was_training = net.training
     net.eval()
     agent = net_greedy_agent(net, dev)
@@ -357,6 +357,10 @@ def main():
                     help="extra benchmark opponent (same syntax as --eval-opponent); "
                          "repeatable; logged but does not drive _best")
     ap.add_argument("--eval-seed-offset", type=int, default=0, dest="eval_off")
+    ap.add_argument("--early-stop-patience", type=int, default=0, dest="early_stop_patience",
+                    help="stop when the PRIMARY benchmark (--eval-opponent) hasn't set a new "
+                         "best for this many eval ticks (0 = never). Used to auto-end phase-1 "
+                         "once it has plateaued — it only needs to be 'good enough' to seed phase-2.")
     ap.add_argument("--save-every", type=int, default=25, dest="save_every")
     ap.add_argument("--log-every", type=int, default=1, dest="log_every")
     ap.add_argument("--debug", action="store_true")
@@ -495,6 +499,7 @@ def main():
         return primary_wr, extras, saved
 
     seed_i = args.train_off
+    no_improve_ticks = 0          # eval ticks since the primary bench last set a new best
 
     # ===== one-shot value warmup (optionally cached to disk for reuse) =====
     # The warmup-calibrated value head depends ONLY on the init policy and the
@@ -627,8 +632,16 @@ def main():
         bench = None
         bench_extras = []        # list of (display_name, win_rate)
         saved_bests = []         # filenames written this tick (one per opponent improved)
+        early_stop_now = False
         if args.eval_every > 0 and (it + 1) % args.eval_every == 0:
+            prev_primary_best = best_wr.get(args.eval_opponent, -1.0)
             bench, bench_extras, saved_bests = _eval_and_save_bests()
+            if best_wr.get(args.eval_opponent, -1.0) > prev_primary_best:
+                no_improve_ticks = 0
+            else:
+                no_improve_ticks += 1
+            if args.early_stop_patience > 0 and no_improve_ticks >= args.early_stop_patience:
+                early_stop_now = True
 
         if it % args.log_every == 0:
             wr = wins / args.episodes_per_iter
@@ -657,6 +670,12 @@ def main():
                          f"[{min(d['val_min'] for d in dbgs):+.1f},{max(d['val_max'] for d in dbgs):+.1f}]"
                          f" ep_len {np.mean([d['ep_len'] for d in dbgs]):.0f}")
             print(line)
+
+        if early_stop_now:
+            print(f"[early-stop] primary bench '{args.eval_opponent}' set no new best in "
+                  f"{no_improve_ticks} eval ticks (best {best_wr.get(args.eval_opponent, -1.0):.2f}); "
+                  f"stopping at iter {it} -> phase-1 done, seeding phase-2")
+            break
 
     torch.save({"model": net.state_dict(), "players": args.players}, args.out)
     print("saved", args.out)

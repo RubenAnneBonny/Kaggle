@@ -86,7 +86,7 @@ def agent(obs):
 # --------------------------------------------------------------------------- #
 def _local_eval(players, model_path, games, opponent="teacher"):
     import contextlib, io
-    from kaggle_environments import make
+    from quiet_kaggle import make
     from seeds import eval_seed
     import ow_base
     global _NPLAYERS, _NETS

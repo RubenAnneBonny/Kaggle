@@ -19,7 +19,7 @@ Major changes from v1:
     comets and the engine's exact end-of-game scoring (max ship total wins).
 """
 import math, numpy as np
-from kaggle_environments import make
+from quiet_kaggle import make          # suppresses the OpenSpiel import banner
 from ow_base import (predict_all_fleet_hits, reach, is_orbiting, path_clear,
                      comet_path_map, _comet_pos)
 from search_agent import snapshot, sim_step, _obs_from_state

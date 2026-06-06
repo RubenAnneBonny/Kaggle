@@ -21,8 +21,8 @@ Usage:
   python bc.py --players 2 --games 800 --epochs 120 --bs 256 --out bc2.pt
   python bc.py --players 4 --games 800 --epochs 120 --bs 256 --out bc4.pt
 """
-import argparse, math, contextlib, io, numpy as np, torch, torch.nn.functional as F
-from kaggle_environments import make
+import argparse, math, contextlib, io, os, numpy as np, torch, torch.nn.functional as F
+from quiet_kaggle import make          # suppresses the OpenSpiel import banner
 from ow_base import net_roi_aggressive, net_roi_support, reach, predict_all_fleet_hits
 from ow_env import encode_state, N_MAX
 from model import OrbitNet, build_edge, frac_dist
@@ -88,10 +88,11 @@ def teacher_decisions(obs, player):
     return enc, tgt_label, frac_label
 
 
-def harvest(games, players, seed_offset=0):
+def _harvest_seeds(seeds, players):
+    """Harvest a list of game seeds in THIS process -> 6 stacked arrays (or None
+    if no states). Pure NumPy + scripted teacher (no torch), so it parallelizes."""
     NF, NM, OM, AM, TL, FL = [], [], [], [], [], []
-    for g in range(games):
-        seed = train_seed(seed_offset + g)
+    for seed in seeds:
         env = make("orbit_wars", configuration={"seed": seed}, debug=False)
         env.reset(num_agents=players)
         agents = [TEACHER] * players
@@ -104,11 +105,42 @@ def harvest(games, players, seed_offset=0):
             enc, tl, fl = teacher_decisions(obs, 0)
             if enc["own_mask"].sum() == 0:
                 continue
-            NF.append(enc["node_feats"]); NM.append(enc["node_mask"])
-            OM.append(enc["own_mask"]); AM.append(enc["attack_mask"])
+            # masks are 0/1 -> store as uint8 (4x smaller than float32). AM (N*N)
+            # dominates the dataset, so this is the main RAM win for the 4p harvest.
+            NF.append(enc["node_feats"])
+            NM.append(enc["node_mask"].astype(np.uint8))
+            OM.append(enc["own_mask"].astype(np.uint8))
+            AM.append(enc["attack_mask"].astype(np.uint8))
             TL.append(tl); FL.append(fl)
+    if not NF:
+        return None
     return (np.stack(NF), np.stack(NM), np.stack(OM),
             np.stack(AM), np.stack(TL), np.stack(FL))
+
+
+def _harvest_worker(args):           # module-level so multiprocessing can pickle it
+    return _harvest_seeds(*args)
+
+
+def harvest(games, players, seed_offset=0, workers=1):
+    """Harvest `games` teacher self-play games. With workers>1 (or 0=all cores),
+    split the seeds round-robin across processes — the harvest is CPU/NumPy-bound,
+    so this scales ~linearly. Falls back to sequential on any pool error."""
+    seeds = [train_seed(seed_offset + g) for g in range(games)]
+    if workers and workers != 1:
+        import multiprocessing as mp
+        nw = max(1, min(workers if workers > 0 else (mp.cpu_count() or 1), games))
+        if nw > 1:
+            try:
+                print(f"  harvesting in parallel across {nw} workers...")
+                with mp.Pool(nw) as pool:
+                    parts = pool.map(_harvest_worker,
+                                     [(seeds[i::nw], players) for i in range(nw)])
+                parts = [p for p in parts if p is not None]
+                return tuple(np.concatenate([p[k] for p in parts], 0) for k in range(6))
+            except Exception as e:
+                print(f"  parallel harvest failed ({e}); falling back to sequential")
+    return _harvest_seeds(seeds, players)
 
 
 def main():
@@ -123,15 +155,41 @@ def main():
     ap.add_argument("--seed-offset", type=int, default=0, dest="seed_offset",
                     help="offset into the TRAIN seed pool (still can't touch eval seeds)")
     ap.add_argument("--attack-weight", type=float, default=5.0, dest="attack_weight")
+    ap.add_argument("--patience", type=int, default=8,
+                    help="early-stop after this many epochs with no val-acc improvement "
+                         "(0 = run all --epochs). The plateau is auto-detected, not guessed.")
+    ap.add_argument("--min-epochs", type=int, default=20, dest="min_epochs",
+                    help="never early-stop before this epoch (lets the curve get going)")
+    ap.add_argument("--harvest-workers", type=int, default=1, dest="harvest_workers",
+                    help="parallel processes for the game harvest (0 = all CPU cores). "
+                         "Big speedup for the one-time harvest; pair with --data-cache.")
+    ap.add_argument("--data-cache", default=None, dest="data_cache",
+                    help="path (.npz) to cache the harvested dataset; if it exists it is "
+                         "loaded and harvesting is SKIPPED. Harvest the 800 games once, "
+                         "then every rerun starts instantly.")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device {dev} | players {args.players} | harvesting {args.games} games "
           f"(train seeds {train_seed(args.seed_offset)}..{train_seed(args.seed_offset+args.games-1)})...")
-    NF, NM, OM, AM, TL, FL = harvest(args.games, args.players, args.seed_offset)
+    if args.data_cache and os.path.exists(args.data_cache):
+        z = np.load(args.data_cache)
+        if int(z["games"]) != args.games or int(z["players"]) != args.players:
+            print(f"  WARNING: cache has games={int(z['games'])} players={int(z['players'])}, "
+                  f"requested games={args.games} players={args.players} — delete it to re-harvest")
+        NF, NM, OM, AM, TL, FL = z["NF"], z["NM"], z["OM"], z["AM"], z["TL"], z["FL"]
+        print(f"loaded cached dataset from {args.data_cache} (skipped {args.games}-game harvest)")
+    else:
+        NF, NM, OM, AM, TL, FL = harvest(args.games, args.players, args.seed_offset,
+                                         args.harvest_workers)
+        if args.data_cache:
+            np.savez(args.data_cache, NF=NF, NM=NM, OM=OM, AM=AM, TL=TL, FL=FL,
+                     games=args.games, players=args.players)
+            print(f"cached dataset to {args.data_cache} (reuse with --data-cache {args.data_cache})")
     print("dataset states:", NF.shape[0])
 
-    NF = torch.tensor(NF); NM = torch.tensor(NM); OM = torch.tensor(OM)
-    AM = torch.tensor(AM); TL = torch.tensor(TL); FL = torch.tensor(FL)
+    # from_numpy shares memory (no copy) -> avoids doubling peak RAM at conversion.
+    NF = torch.from_numpy(NF); NM = torch.from_numpy(NM); OM = torch.from_numpy(OM)
+    AM = torch.from_numpy(AM); TL = torch.from_numpy(TL); FL = torch.from_numpy(FL)
     n = NF.shape[0]; cut = int(0.9 * n)
     perm = torch.randperm(n); tr, va = perm[:cut], perm[cut:]
 
@@ -177,7 +235,37 @@ def main():
             ferr = torch.tensor(0.0)
         return loss_t + 0.5 * loss_f, acc, ferr
 
+    def eval_val(idx, bs):
+        """Chunked validation: aggregate sums/counts across minibatches so we never
+        materialize the full-val pairwise tensor (B*N*N*~129 floats) at once — that
+        OOMs on a small GPU for large datasets. Returns plain-float (loss, acc, ferr)."""
+        ce_wsum = ce_wtot = f_sum = f_cnt = cor = atk_tot = fe_sum = 0.0
+        for i in range(0, len(idx), bs):
+            j = idx[i:i + bs]
+            nf = NF[j].to(dev); nm = NM[j].to(dev); om = OM[j].to(dev)
+            am = AM[j].to(dev); tl = TL[j].to(dev); fl = FL[j].to(dev)
+            tgt_logits, frac_ab, _ = net(nf, build_edge(nf), nm, am)
+            B, N, _ = tgt_logits.shape
+            own = om.bool().view(-1)
+            tlog = tgt_logits.view(B * N, N + 1)[own]; tlab = tl.view(B * N)[own]
+            ce_t = F.cross_entropy(tlog, tlab, reduction="none")
+            wts = torch.where(tlab != HOLD, torch.tensor(args.attack_weight, device=dev),
+                              torch.tensor(1.0, device=dev))
+            ce_wsum += float((ce_t * wts).sum()); ce_wtot += float(wts.sum())
+            fab = frac_ab.view(B * N, 2)[own]; flab = fl.view(B * N)[own]; m = flab >= 0
+            if m.any():
+                fd = frac_dist(fab[m]); target = flab[m].clamp(1e-3, 1 - 1e-3)
+                f_sum += float((-fd.log_prob(target)).sum()); f_cnt += float(m.sum())
+                fe_sum += float((fd.mean - flab[m]).abs().sum())
+            atk = tlab != HOLD
+            if atk.any():
+                cor += float((tlog[atk].argmax(-1) == tlab[atk]).sum()); atk_tot += float(atk.sum())
+        loss_t = ce_wsum / max(ce_wtot, 1e-9)
+        loss_f = f_sum / max(f_cnt, 1.0)
+        return loss_t + 0.5 * loss_f, cor / max(atk_tot, 1.0), fe_sum / max(f_cnt, 1.0)
+
     best_acc, best_path = -1.0, (args.out.replace(".pt", "_best.pt") if args.out.endswith(".pt") else args.out + "_best")
+    since_improve = 0          # epochs since the last val-acc best (drives early-stop)
     for ep in range(args.epochs):
         net.train()
         p = tr[torch.randperm(len(tr))]
@@ -186,15 +274,23 @@ def main():
             opt.zero_grad(); loss.backward(); opt.step()
         net.eval()
         with torch.no_grad():
-            vl, acc, ferr = batch_loss(va)
-        acc = acc.item(); flag = ""
+            vl, acc, ferr = eval_val(va, args.bs)
+        flag = ""
         if acc > best_acc:
-            best_acc = acc
+            best_acc = acc; since_improve = 0
             torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
                         "players": args.players}, best_path)
             flag = "  <- new best, saved"
-        print(f"epoch {ep:3d}  val_loss {vl.item():.3f}  target_acc {acc:.3f}  "
-              f"frac_MAE {ferr.item():.3f}{flag}")
+        else:
+            since_improve += 1
+        print(f"epoch {ep:3d}  val_loss {vl:.3f}  target_acc {acc:.3f}  "
+              f"frac_MAE {ferr:.3f}  (no-improve {since_improve}){flag}")
+        # Plateau early-stop: auto-detect that val acc has stopped improving instead
+        # of running all --epochs. Honors --min-epochs so it can't stop too early.
+        if args.patience > 0 and ep + 1 >= args.min_epochs and since_improve >= args.patience:
+            print(f"early-stop: no val-acc improvement for {args.patience} epochs "
+                  f"(best {best_acc:.3f} @ epoch {ep - since_improve}); stopping at epoch {ep}")
+            break
 
     torch.save({"model": net.state_dict(), "opt": opt.state_dict(), "players": args.players}, args.out)
     print(f"saved last -> {args.out} | best (acc={best_acc:.3f}) -> {best_path}")
