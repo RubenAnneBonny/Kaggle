@@ -139,9 +139,14 @@ Each does three stages, logging live to per-stage `.log` files:
    Saves `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
    Phase-2 runs the same low-entropy, anchor-heavy regime as phase-1 — `--ent 5e-4`
    (a whisper of exploration, **not** the `0.003` that caused the collapse below),
-   `--lr 5e-5`, and ≈ 65 % weight on **fixed** anchors (teacher/weak/scripts/rl_v1)
-   so the self-play league (≈ 20–35 %) can't run away. It also enables the **gauntlet
-   ladder** and the **collapse guard** (both documented below).
+   `--lr 7e-5` (nudged up from the original `5e-5` to spend more of the unused
+   `target_kl` budget — KL ran ≈ 0.005–0.013 vs the 0.04 cap, so the policy was
+   under-stepping; kept deliberately **below** the `1e-4` that was part of the
+   collapse cocktail), and ≈ 65 % weight on **fixed** anchors (teacher/weak/scripts/rl_v1)
+   so the self-play league (≈ 20–35 %) can't run away. `--episodes_per_iter 24`
+   (up from 16) lowers advantage-estimate variance, and `--eval-games 50` (up from
+   30, above the 40 floor) de-noises the greedy `_best` selection. It also enables
+   the **gauntlet ladder** and the **collapse guard** (both documented below).
 
    > **Phase-2 self-play collapse (what we fixed).** The original phase-2 used
    > `--ent 0.003 --lr 1e-4` with a **55 %** self-play league. It climbed to teacher

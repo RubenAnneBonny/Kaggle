@@ -9,3 +9,5 @@ __pycache__/
 *_warmup.pt
 *_it[0-9]*.pt
 *_data.npz      # cached BC harvest (large, machine-local; re-harvested on demand)
+
+RLV2/bc2_data.npz

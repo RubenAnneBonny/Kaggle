@@ -1,521 +1,111 @@
-(.venv) PS C:\Users\ruben\Kaggle\OrbitWars\RLV2> powershell -ExecutionPolicy Bypass -File .\run_2p_resume.ps1
-=== [1/2] 2026-06-06 20:56:26Z  PPO phase-1 2p (resume; reuse warmup; auto-stop on plateau) ===
-warm-started from bc2_best.pt
-[parallel] 8 CPU workers for collection + eval
-[2p] opponent=self | lr=3e-05 ent=0.0 clip=0.2 vf=0.25 | eps/iter=16 mb=128 kl=0.05 | coord_cap=2.0 hard_skip=False max_steps=500
-  mix (per non-focal slot, per episode): {'weak': 0.3, 'script:nearest_planet_smart': 0.15, 'script:comet_user': 0.15, 'league': 0.4} | league_size=8 add_every=10
-  selection: GREEDY benchmark vs nearest_planet every 5 iters (30 eval-pool games) -> _best (submit target)
-[warmup] collecting 12 games for value calibration...
-[warmup] 2408 states (collect win_rate 0.33); training value head 100 epochs @ lr 0.001...
-[warmup] epoch   0  value_loss 0.733
-[warmup] epoch  10  value_loss 0.246
-[warmup] epoch  20  value_loss 0.151
-[warmup] epoch  30  value_loss 0.103
-[warmup] epoch  40  value_loss 0.074
-[warmup] epoch  50  value_loss 0.055
-[warmup] epoch  60  value_loss 0.041
-[warmup] epoch  70  value_loss 0.036
-[warmup] epoch  80  value_loss 0.031
-[warmup] epoch  90  value_loss 0.026
-[warmup] epoch  99  value_loss 0.023
-[warmup] done.
-[warmup] cached to ppo2_phase1_warmup.pt (reuse later with --warmup-cache ppo2_phase1_warmup.pt)
-[baseline] bench vs nearest_planet 0.20  -> saved ppo2_phase1_best.pt
-iter    0  mean_ep_reward -2.998  train_wr 0.25  best_bench 0.20  kl 0.0125  ev +0.57 (early-stop @ep1)  | hold 83% entH 0.39 conc 13.7 mv 0.4
-iter    1  mean_ep_reward -2.239  train_wr 0.31  best_bench 0.20  kl 0.0130  ev +0.81 (early-stop @ep1)  | hold 81% entH 0.36 conc 12.6 mv 0.6
-iter    2  mean_ep_reward -4.487  train_wr 0.12  best_bench 0.20  kl 0.0191  ev +0.83 (early-stop @ep1)  | hold 74% entH 0.51 conc 13.4 mv 0.5
-iter    3  mean_ep_reward -3.739  train_wr 0.19  best_bench 0.20  kl 0.0145  ev +0.84 (early-stop @ep2)  | hold 82% entH 0.43 conc 13.9 mv 0.5
-iter    4  mean_ep_reward -3.704  train_wr 0.19  bench 0.20  best_bench 0.20  kl 0.0114  ev +0.92  | hold 81% entH 0.38 conc 13.7 mv 0.4
-iter    5  mean_ep_reward -4.469  train_wr 0.12  best_bench 0.20  kl 0.0091  ev +0.88  | hold 77% entH 0.43 conc 12.6 mv 0.4
-iter    6  mean_ep_reward -2.240  train_wr 0.31  best_bench 0.20  kl 0.0117  ev +0.92  | hold 82% entH 0.40 conc 12.8 mv 0.4
-iter    7  mean_ep_reward -3.740  train_wr 0.19  best_bench 0.20  kl 0.0097  ev +0.90  | hold 76% entH 0.52 conc 12.6 mv 0.4
-iter    8  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.20  kl 0.0095  ev +0.95  | hold 76% entH 0.50 conc 12.2 mv 0.4
-iter    9  mean_ep_reward -4.492  train_wr 0.12  bench 0.30  best_bench 0.30  kl 0.0089  ev +0.87  | hold 82% entH 0.38 conc 13.0 mv 0.3  *saved ppo2_phase1_best.pt
-iter   10  mean_ep_reward -0.742  train_wr 0.44  best_bench 0.30  kl 0.0048  ev +0.94  | hold 82% entH 0.45 conc 12.8 mv 0.3
-iter   11  mean_ep_reward -1.499  train_wr 0.38  best_bench 0.30  kl 0.0079  ev +0.94  | hold 79% entH 0.42 conc 11.9 mv 0.4
-iter   12  mean_ep_reward -1.494  train_wr 0.38  best_bench 0.30  kl 0.0071  ev +0.96  | hold 83% entH 0.38 conc 12.6 mv 0.4
-iter   13  mean_ep_reward -0.745  train_wr 0.44  best_bench 0.30  kl 0.0071  ev +0.95  | hold 86% entH 0.36 conc 13.0 mv 0.4
-iter   14  mean_ep_reward -0.749  train_wr 0.44  bench 0.27  best_bench 0.30  kl 0.0048  ev +0.93  | hold 79% entH 0.49 conc 12.6 mv 0.5
-iter   15  mean_ep_reward +0.007  train_wr 0.50  best_bench 0.30  kl 0.0055  ev +0.95  | hold 82% entH 0.49 conc 12.3 mv 0.5
-iter   16  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.30  kl 0.0041  ev +0.94  | hold 83% entH 0.36 conc 12.8 mv 0.5
-iter   17  mean_ep_reward -4.499  train_wr 0.12  best_bench 0.30  kl 0.0066  ev +0.91  | hold 85% entH 0.37 conc 13.3 mv 0.4
-iter   18  mean_ep_reward -0.749  train_wr 0.44  best_bench 0.30  kl 0.0026  ev +0.96 (early-stop @ep1)  | hold 79% entH 0.43 conc 12.3 mv 0.6
-iter   19  mean_ep_reward -2.997  train_wr 0.25  bench 0.43  best_bench 0.43  kl 0.0059  ev +0.92  | hold 80% entH 0.41 conc 12.0 mv 0.6  *saved ppo2_phase1_best.pt
-iter   20  mean_ep_reward -2.248  train_wr 0.31  best_bench 0.43  kl 0.0075  ev +0.94  | hold 81% entH 0.44 conc 12.3 mv 0.6
-iter   21  mean_ep_reward +0.752  train_wr 0.56  best_bench 0.43  kl 0.0069  ev +0.94 (early-stop @ep3)  | hold 87% entH 0.37 conc 12.7 mv 0.5
-iter   22  mean_ep_reward -2.248  train_wr 0.31  best_bench 0.43  kl 0.0066  ev +0.95  | hold 81% entH 0.43 conc 13.0 mv 0.6
-iter   23  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0042  ev +0.97  | hold 79% entH 0.47 conc 12.5 mv 0.6
-iter   24  mean_ep_reward -2.249  train_wr 0.31  bench 0.47  best_bench 0.47  kl 0.0054  ev +0.95  | hold 77% entH 0.51 conc 12.7 mv 0.7  *saved ppo2_phase1_best.pt
-iter   25  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.47  kl 0.0080  ev +0.95 (early-stop @ep3)  | hold 77% entH 0.54 conc 13.1 mv 0.4
-iter   26  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.47  kl 0.0069  ev +0.96  | hold 80% entH 0.39 conc 12.7 mv 0.6
-iter   27  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.47  kl 0.0060  ev +0.95  | hold 78% entH 0.48 conc 12.9 mv 0.6
-iter   28  mean_ep_reward +0.001  train_wr 0.50  best_bench 0.47  kl 0.0033  ev +0.96  | hold 83% entH 0.37 conc 12.9 mv 0.5
-iter   29  mean_ep_reward +2.251  train_wr 0.69  bench 0.43  best_bench 0.47  kl 0.0034  ev +0.97  | hold 85% entH 0.40 conc 13.4 mv 0.6
-iter   30  mean_ep_reward -0.745  train_wr 0.44  best_bench 0.47  kl 0.0058  ev +0.96  | hold 86% entH 0.39 conc 13.7 mv 0.5
-iter   31  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.47  kl 0.0037  ev +0.95  | hold 84% entH 0.38 conc 13.5 mv 0.7
-iter   32  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.47  kl 0.0035  ev +0.96  | hold 83% entH 0.39 conc 12.8 mv 0.8
-iter   33  mean_ep_reward -1.498  train_wr 0.38  best_bench 0.47  kl 0.0048  ev +0.95  | hold 84% entH 0.37 conc 13.4 mv 0.5
-iter   34  mean_ep_reward -0.748  train_wr 0.44  bench 0.40  best_bench 0.47  kl 0.0049  ev +0.96  | hold 85% entH 0.32 conc 12.9 mv 0.5
-iter   35  mean_ep_reward +0.752  train_wr 0.56  best_bench 0.47  kl 0.0044  ev +0.98  | hold 83% entH 0.39 conc 13.5 mv 0.5
-iter   36  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.47  kl 0.0034  ev +0.96  | hold 82% entH 0.41 conc 12.8 mv 0.6
-iter   37  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.47  kl 0.0049  ev +0.96  | hold 84% entH 0.37 conc 13.4 mv 0.6
-iter   38  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.47  kl 0.0035  ev +0.97  | hold 81% entH 0.39 conc 13.2 mv 0.7
-iter   39  mean_ep_reward +0.750  train_wr 0.56  bench 0.57  best_bench 0.57  kl 0.0078  ev +0.97  | hold 73% entH 0.45 conc 12.5 mv 0.7  *saved ppo2_phase1_best.pt
-iter   40  mean_ep_reward +3.751  train_wr 0.81  best_bench 0.57  kl 0.0036  ev +0.96  | hold 83% entH 0.44 conc 13.6 mv 0.8
-iter   41  mean_ep_reward -1.490  train_wr 0.38  best_bench 0.57  kl 0.0056  ev +0.95  | hold 82% entH 0.37 conc 13.4 mv 0.6
-iter   42  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.57  kl 0.0032  ev +0.96  | hold 83% entH 0.37 conc 13.7 mv 0.6
-iter   43  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.57  kl 0.0064  ev +0.97  | hold 84% entH 0.36 conc 13.4 mv 0.5
-iter   44  mean_ep_reward +2.250  train_wr 0.69  bench 0.57  best_bench 0.57  kl 0.0078  ev +0.95  | hold 84% entH 0.42 conc 13.1 mv 0.7
-iter   45  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.57  kl 0.0037  ev +0.97  | hold 84% entH 0.37 conc 13.6 mv 0.6
-iter   46  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.57  kl 0.0042  ev +0.92  | hold 84% entH 0.45 conc 13.7 mv 0.9
-iter   47  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.57  kl 0.0020  ev +0.96  | hold 80% entH 0.44 conc 12.8 mv 0.7
-iter   48  mean_ep_reward +0.001  train_wr 0.50  best_bench 0.57  kl 0.0052  ev +0.96  | hold 81% entH 0.42 conc 12.5 mv 0.6
-iter   49  mean_ep_reward +2.250  train_wr 0.69  bench 0.53  best_bench 0.57  kl 0.0035  ev +0.97  | hold 85% entH 0.41 conc 13.3 mv 0.6
-iter   50  mean_ep_reward +1.501  train_wr 0.62  best_bench 0.57  kl 0.0052  ev +0.96  | hold 83% entH 0.39 conc 12.9 mv 0.6
-iter   51  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.57  kl 0.0060  ev +0.95  | hold 84% entH 0.44 conc 13.1 mv 0.6
-iter   52  mean_ep_reward -0.746  train_wr 0.44  best_bench 0.57  kl 0.0082  ev +0.96  | hold 81% entH 0.38 conc 12.6 mv 0.7
-iter   53  mean_ep_reward +0.001  train_wr 0.50  best_bench 0.57  kl 0.0054  ev +0.97  | hold 83% entH 0.42 conc 12.8 mv 0.6
-iter   54  mean_ep_reward +2.250  train_wr 0.69  bench 0.63  best_bench 0.63  kl 0.0023  ev +0.96  | hold 81% entH 0.50 conc 13.8 mv 0.7  *saved ppo2_phase1_best.pt
-iter   55  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.63  kl 0.0052  ev +0.96  | hold 84% entH 0.38 conc 13.3 mv 0.6
-iter   56  mean_ep_reward +2.253  train_wr 0.69  best_bench 0.63  kl 0.0062  ev +0.96  | hold 83% entH 0.39 conc 13.3 mv 0.8
-iter   57  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.63  kl 0.0083  ev +0.96  | hold 81% entH 0.43 conc 13.3 mv 0.6
-iter   58  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.63  kl 0.0044  ev +0.97  | hold 80% entH 0.46 conc 13.1 mv 0.7
-iter   59  mean_ep_reward +4.500  train_wr 0.88  bench 0.77  best_bench 0.77  kl 0.0030  ev +0.94  | hold 83% entH 0.45 conc 13.4 mv 0.8  *saved ppo2_phase1_best.pt
-iter   60  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.77  kl 0.0034  ev +0.96  | hold 80% entH 0.51 conc 13.5 mv 0.7
-iter   61  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.77  kl 0.0043  ev +0.97  | hold 80% entH 0.53 conc 13.5 mv 0.7
-iter   62  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.77  kl 0.0024  ev +0.97  | hold 82% entH 0.50 conc 13.8 mv 0.8
-iter   63  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.77  kl 0.0075  ev +0.97 (early-stop @ep3)  | hold 80% entH 0.52 conc 13.7 mv 0.8
-iter   64  mean_ep_reward +0.000  train_wr 0.50  bench 0.70  best_bench 0.77  kl 0.0032  ev +0.97 (early-stop @ep2)  | hold 75% entH 0.53 conc 13.2 mv 0.7
-iter   65  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.77  kl 0.0044  ev +0.97  | hold 78% entH 0.50 conc 13.6 mv 0.9
-iter   66  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.77  kl 0.0044  ev +0.95  | hold 76% entH 0.56 conc 13.4 mv 0.9
-iter   67  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.77  kl 0.0054  ev +0.96  | hold 83% entH 0.44 conc 13.9 mv 0.9
-iter   68  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.77  kl 0.0061  ev +0.96  | hold 82% entH 0.45 conc 13.2 mv 0.8
-iter   69  mean_ep_reward +5.250  train_wr 0.94  bench 0.80  best_bench 0.80  kl 0.0056  ev +0.94  | hold 82% entH 0.47 conc 13.6 mv 0.9  *saved ppo2_phase1_best.pt
-iter   70  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0031  ev +0.96 (early-stop @ep3)  | hold 77% entH 0.49 conc 12.9 mv 0.9
-iter   71  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0054  ev +0.98  | hold 78% entH 0.56 conc 13.5 mv 0.8
-iter   72  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0046  ev +0.97  | hold 76% entH 0.51 conc 12.9 mv 1.0
-iter   73  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0046  ev +0.97  | hold 77% entH 0.53 conc 13.0 mv 0.8
-iter   74  mean_ep_reward +1.500  train_wr 0.62  bench 0.70  best_bench 0.80  kl 0.0035  ev +0.97  | hold 78% entH 0.52 conc 12.7 mv 0.8
-iter   75  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.80  kl 0.0048  ev +0.96  | hold 76% entH 0.55 conc 13.2 mv 0.9
-iter   76  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.80  kl 0.0045  ev +0.95  | hold 79% entH 0.55 conc 13.0 mv 0.9
-iter   77  mean_ep_reward +3.755  train_wr 0.81  best_bench 0.80  kl 0.0071  ev +0.97  | hold 82% entH 0.47 conc 13.6 mv 0.8
-iter   78  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0072  ev +0.96  | hold 78% entH 0.51 conc 13.6 mv 0.8
-iter   79  mean_ep_reward +3.001  train_wr 0.75  bench 0.77  best_bench 0.80  kl 0.0038  ev +0.96  | hold 83% entH 0.45 conc 13.5 mv 0.9
-iter   80  mean_ep_reward +1.501  train_wr 0.62  best_bench 0.80  kl 0.0055  ev +0.98  | hold 80% entH 0.48 conc 13.7 mv 0.8
-iter   81  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0084  ev +0.97  | hold 79% entH 0.51 conc 13.7 mv 0.8
-iter   82  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.80  kl 0.0054  ev +0.95  | hold 68% entH 0.59 conc 12.5 mv 0.8
-iter   83  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0054  ev +0.96  | hold 78% entH 0.48 conc 12.9 mv 0.8
-iter   84  mean_ep_reward +4.500  train_wr 0.88  bench 0.67  best_bench 0.80  kl 0.0043  ev +0.97  | hold 80% entH 0.49 conc 13.9 mv 0.7
-iter   85  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0050  ev +0.97  | hold 80% entH 0.48 conc 14.0 mv 0.8
-iter   86  mean_ep_reward +0.751  train_wr 0.56  best_bench 0.80  kl 0.0043  ev +0.96  | hold 74% entH 0.54 conc 13.9 mv 0.7
-iter   87  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.80  kl 0.0071  ev +0.97  | hold 74% entH 0.52 conc 13.4 mv 0.7
-iter   88  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0097  ev +0.97  | hold 77% entH 0.53 conc 14.4 mv 0.8
-iter   89  mean_ep_reward +1.500  train_wr 0.62  bench 0.70  best_bench 0.80  kl 0.0041  ev +0.97  | hold 71% entH 0.54 conc 13.4 mv 0.7
-iter   90  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0063  ev +0.97  | hold 75% entH 0.54 conc 13.8 mv 0.9
-iter   91  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0045  ev +0.96 (early-stop @ep3)  | hold 73% entH 0.59 conc 14.4 mv 0.9
-iter   92  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0048  ev +0.96  | hold 76% entH 0.49 conc 14.0 mv 0.8
-iter   93  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0046  ev +0.97  | hold 74% entH 0.60 conc 14.1 mv 0.8
-iter   94  mean_ep_reward +5.249  train_wr 0.94  bench 0.77  best_bench 0.80  kl 0.0029  ev +0.93  | hold 83% entH 0.45 conc 15.1 mv 0.7
-iter   95  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0076  ev +0.97  | hold 79% entH 0.45 conc 13.4 mv 0.8
-iter   96  mean_ep_reward +1.503  train_wr 0.62  best_bench 0.80  kl 0.0043  ev +0.96  | hold 79% entH 0.49 conc 13.3 mv 0.7
-iter   97  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0053  ev +0.97  | hold 82% entH 0.46 conc 13.7 mv 0.7
-iter   98  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0083  ev +0.96  | hold 80% entH 0.44 conc 13.2 mv 0.7
-iter   99  mean_ep_reward +4.500  train_wr 0.88  bench 0.77  best_bench 0.80  kl 0.0026  ev +0.96  | hold 79% entH 0.50 conc 14.3 mv 0.9
-iter  100  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.80  kl 0.0059  ev +0.96  | hold 67% entH 0.61 conc 13.1 mv 0.8
-iter  101  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.80  kl 0.0095  ev +0.97  | hold 75% entH 0.54 conc 13.3 mv 0.7
-iter  102  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0090  ev +0.98  | hold 79% entH 0.52 conc 14.4 mv 0.8
-iter  103  mean_ep_reward +0.751  train_wr 0.56  best_bench 0.80  kl 0.0058  ev +0.97  | hold 73% entH 0.54 conc 13.1 mv 0.8
-iter  104  mean_ep_reward +0.750  train_wr 0.56  bench 0.80  best_bench 0.80  kl 0.0022  ev +0.96  | hold 72% entH 0.61 conc 13.3 mv 0.7
-iter  105  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0056  ev +0.96 (early-stop @ep2)  | hold 77% entH 0.56 conc 14.0 mv 0.7
-iter  106  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.80  kl 0.0060  ev +0.96  | hold 78% entH 0.53 conc 14.0 mv 0.8
-iter  107  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0043  ev +0.97  | hold 77% entH 0.54 conc 13.9 mv 0.8
-iter  108  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.80  kl 0.0057  ev +0.96  | hold 78% entH 0.56 conc 14.4 mv 0.9
-iter  109  mean_ep_reward +3.750  train_wr 0.81  bench 0.83  best_bench 0.83  kl 0.0027  ev +0.96  | hold 78% entH 0.53 conc 14.2 mv 0.8  *saved ppo2_phase1_best.pt
-iter  110  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.83  kl 0.0064  ev +0.97  | hold 79% entH 0.49 conc 14.3 mv 0.7
-iter  111  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.83  kl 0.0064  ev +0.97  | hold 81% entH 0.46 conc 13.7 mv 0.6
-iter  112  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.83  kl 0.0075  ev +0.95  | hold 80% entH 0.53 conc 14.6 mv 0.8
-iter  113  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0088  ev +0.98  | hold 78% entH 0.53 conc 14.0 mv 0.7
-iter  114  mean_ep_reward +2.968  train_wr 0.75  bench 0.77  best_bench 0.83  kl 0.0047  ev +0.97  | hold 79% entH 0.47 conc 13.1 mv 0.6
-iter  115  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0069  ev +0.96  | hold 75% entH 0.54 conc 13.5 mv 0.8
-iter  116  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0047  ev +0.97  | hold 74% entH 0.50 conc 13.8 mv 0.8
-iter  117  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.83  kl 0.0080  ev +0.98  | hold 80% entH 0.42 conc 13.7 mv 0.6
-iter  118  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0053  ev +0.96  | hold 77% entH 0.49 conc 13.8 mv 0.8
-iter  119  mean_ep_reward +3.750  train_wr 0.81  bench 0.83  best_bench 0.83  kl 0.0026  ev +0.97  | hold 79% entH 0.42 conc 14.0 mv 0.7
-iter  120  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0024  ev +0.97  | hold 77% entH 0.47 conc 13.8 mv 0.8
-iter  121  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.83  kl 0.0032  ev +0.95  | hold 83% entH 0.41 conc 14.3 mv 0.6
-iter  122  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.83  kl 0.0062  ev +0.97  | hold 81% entH 0.39 conc 13.5 mv 0.5
-iter  123  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.83  kl 0.0075  ev +0.95  | hold 81% entH 0.44 conc 13.9 mv 0.8
-iter  124  mean_ep_reward +5.250  train_wr 0.94  bench 0.80  best_bench 0.83  kl 0.0048  ev +0.96  | hold 83% entH 0.41 conc 14.4 mv 0.8
-iter  125  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0050  ev +0.97  | hold 81% entH 0.42 conc 14.2 mv 0.7
-iter  126  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.83  kl 0.0064  ev +0.97  | hold 80% entH 0.42 conc 13.7 mv 0.7
-iter  127  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0068  ev +0.96  | hold 79% entH 0.46 conc 13.7 mv 0.8
-iter  128  mean_ep_reward +3.006  train_wr 0.75  best_bench 0.83  kl 0.0046  ev +0.96  | hold 75% entH 0.47 conc 13.0 mv 0.8
-iter  129  mean_ep_reward +5.250  train_wr 0.94  bench 0.80  best_bench 0.83  kl 0.0047  ev +0.95  | hold 82% entH 0.39 conc 13.9 mv 0.7
-iter  130  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0041  ev +0.97  | hold 79% entH 0.45 conc 13.0 mv 0.7
-iter  131  mean_ep_reward +3.001  train_wr 0.75  best_bench 0.83  kl 0.0046  ev +0.98  | hold 81% entH 0.40 conc 13.4 mv 0.7
-iter  132  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.83  kl 0.0092  ev +0.97  | hold 81% entH 0.41 conc 13.4 mv 0.7
-iter  133  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.83  kl 0.0035  ev +0.96  | hold 72% entH 0.49 conc 12.8 mv 0.7
-iter  134  mean_ep_reward +3.001  train_wr 0.75  bench 0.83  best_bench 0.83  kl 0.0043  ev +0.97  | hold 79% entH 0.41 conc 13.5 mv 0.8
-iter  135  mean_ep_reward +2.253  train_wr 0.69  best_bench 0.83  kl 0.0009  ev +0.95 (early-stop @ep1)  | hold 78% entH 0.42 conc 12.9 mv 0.8
-iter  136  mean_ep_reward +5.254  train_wr 0.94  best_bench 0.83  kl 0.0038  ev +0.95  | hold 85% entH 0.35 conc 13.8 mv 0.6
-iter  137  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.83  kl 0.0010  ev +0.96  | hold 79% entH 0.42 conc 13.2 mv 0.7
-iter  138  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.83  kl 0.0033  ev +0.97  | hold 80% entH 0.37 conc 13.4 mv 0.6
-iter  139  mean_ep_reward +5.250  train_wr 0.94  bench 0.90  best_bench 0.90  kl 0.0034  ev +0.96  | hold 84% entH 0.37 conc 13.6 mv 0.6  *saved ppo2_phase1_best.pt
-iter  140  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.90  kl 0.0093  ev +0.98  | hold 82% entH 0.37 conc 13.4 mv 0.6
-iter  141  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.90  kl 0.0077  ev +0.96  | hold 80% entH 0.41 conc 13.2 mv 0.6
-iter  142  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.90  kl 0.0106  ev +0.96  | hold 82% entH 0.39 conc 13.7 mv 0.6
-iter  143  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.90  kl 0.0048  ev +0.96  | hold 74% entH 0.47 conc 12.6 mv 0.6
-iter  144  mean_ep_reward +1.500  train_wr 0.62  bench 0.90  best_bench 0.90  kl 0.0059  ev +0.97  | hold 71% entH 0.48 conc 11.9 mv 0.6
-iter  145  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.90  kl 0.0082  ev +0.97  | hold 76% entH 0.50 conc 12.4 mv 0.7
-iter  146  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.90  kl 0.0107  ev +0.97  | hold 73% entH 0.46 conc 12.1 mv 0.7
-iter  147  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.90  kl 0.0059  ev +0.95  | hold 77% entH 0.46 conc 12.7 mv 0.7
-iter  148  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.90  kl 0.0043  ev +0.96  | hold 76% entH 0.47 conc 12.8 mv 0.7
-iter  149  mean_ep_reward +2.250  train_wr 0.69  bench 0.83  best_bench 0.90  kl 0.0067  ev +0.96  | hold 75% entH 0.45 conc 12.6 mv 0.6
-iter  150  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.90  kl 0.0059  ev +0.96  | hold 73% entH 0.46 conc 12.7 mv 0.6
-iter  151  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.90  kl 0.0045  ev +0.97  | hold 76% entH 0.44 conc 13.0 mv 0.7
-iter  152  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.90  kl 0.0113  ev +0.97  | hold 71% entH 0.51 conc 12.3 mv 0.8
-iter  153  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.90  kl 0.0040  ev +0.96  | hold 81% entH 0.38 conc 13.2 mv 0.5
-iter  154  mean_ep_reward +3.000  train_wr 0.75  bench 0.90  best_bench 0.90  kl 0.0117  ev +0.97  | hold 75% entH 0.48 conc 12.5 mv 0.6
-iter  155  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.90  kl 0.0046  ev +0.96  | hold 73% entH 0.46 conc 12.5 mv 0.7
-iter  156  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.90  kl 0.0067  ev +0.97  | hold 78% entH 0.43 conc 12.5 mv 0.7
-iter  157  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.90  kl 0.0045  ev +0.97  | hold 81% entH 0.41 conc 12.7 mv 0.5
-iter  158  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.90  kl 0.0100  ev +0.97 (early-stop @ep3)  | hold 65% entH 0.58 conc 11.8 mv 0.6
-iter  159  mean_ep_reward +2.250  train_wr 0.69  bench 0.90  best_bench 0.90  kl 0.0059  ev +0.97  | hold 75% entH 0.44 conc 11.4 mv 0.6
-iter  160  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.90  kl 0.0051  ev +0.95 (early-stop @ep3)  | hold 76% entH 0.50 conc 12.2 mv 0.6
-iter  161  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.90  kl 0.0083  ev +0.96  | hold 74% entH 0.41 conc 12.3 mv 0.6
-iter  162  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.90  kl 0.0063  ev +0.97  | hold 76% entH 0.46 conc 12.4 mv 0.6
-iter  163  mean_ep_reward +3.017  train_wr 0.75  best_bench 0.90  kl 0.0056  ev +0.96  | hold 80% entH 0.42 conc 12.1 mv 0.7
-iter  164  mean_ep_reward +3.000  train_wr 0.75  bench 0.90  best_bench 0.90  kl 0.0102  ev +0.97 (early-stop @ep3)  | hold 75% entH 0.51 conc 12.2 mv 0.6
-iter  165  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.90  kl 0.0062  ev +0.96  | hold 75% entH 0.48 conc 12.5 mv 0.7
-iter  166  mean_ep_reward +6.000  train_wr 1.00  best_bench 0.90  kl 0.0008  ev +0.89  | hold 80% entH 0.43 conc 13.2 mv 0.7
-iter  167  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.90  kl 0.0032  ev +0.96  | hold 79% entH 0.43 conc 13.1 mv 0.7
-iter  168  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.90  kl 0.0065  ev +0.95  | hold 79% entH 0.42 conc 12.7 mv 0.5
-iter  169  mean_ep_reward +6.000  train_wr 1.00  bench 0.93  best_bench 0.93  kl 0.0008  ev +0.87  | hold 82% entH 0.41 conc 13.5 mv 0.6  *saved ppo2_phase1_best.pt
-iter  170  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0063  ev +0.90  | hold 80% entH 0.40 conc 12.9 mv 0.5
-iter  171  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0080  ev +0.95  | hold 77% entH 0.47 conc 12.7 mv 0.6
-iter  172  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0035  ev +0.95  | hold 74% entH 0.48 conc 12.6 mv 0.7
-iter  173  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.93  kl 0.0048  ev +0.96  | hold 78% entH 0.41 conc 13.4 mv 0.5
-iter  174  mean_ep_reward +4.500  train_wr 0.88  bench 0.93  best_bench 0.93  kl 0.0047  ev +0.96  | hold 77% entH 0.44 conc 13.3 mv 0.6
-iter  175  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.93  kl 0.0025  ev +0.94 (early-stop @ep3)  | hold 83% entH 0.37 conc 12.9 mv 0.6
-iter  176  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.93  kl 0.0076  ev +0.95  | hold 74% entH 0.47 conc 12.4 mv 0.6
-iter  177  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.93  kl 0.0109  ev +0.96  | hold 76% entH 0.46 conc 11.8 mv 0.7
-iter  178  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.93  kl 0.0086  ev +0.97  | hold 79% entH 0.48 conc 12.1 mv 0.6
-iter  179  mean_ep_reward +4.500  train_wr 0.88  bench 0.93  best_bench 0.93  kl 0.0042  ev +0.94  | hold 79% entH 0.42 conc 12.3 mv 0.5
-iter  180  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.93  kl 0.0037  ev +0.96  | hold 79% entH 0.44 conc 12.3 mv 0.6
-iter  181  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0045  ev +0.96  | hold 79% entH 0.42 conc 12.1 mv 0.6
-iter  182  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.93  kl 0.0092  ev +0.96 (early-stop @ep3)  | hold 73% entH 0.48 conc 11.3 mv 0.5
-iter  183  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0021  ev +0.97  | hold 77% entH 0.45 conc 12.1 mv 0.5
-iter  184  mean_ep_reward +3.000  train_wr 0.75  bench 0.93  best_bench 0.93  kl 0.0079  ev +0.97  | hold 78% entH 0.40 conc 11.2 mv 0.4
-iter  185  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0055  ev +0.95  | hold 74% entH 0.46 conc 12.4 mv 0.5
-iter  186  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.93  kl 0.0041  ev +0.95  | hold 82% entH 0.38 conc 12.4 mv 0.5
-iter  187  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.93  kl 0.0070  ev +0.96  | hold 78% entH 0.42 conc 12.1 mv 0.5
-iter  188  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.93  kl 0.0068  ev +0.96  | hold 75% entH 0.49 conc 11.9 mv 0.6
-iter  189  mean_ep_reward +4.500  train_wr 0.88  bench 0.90  best_bench 0.93  kl 0.0065  ev +0.95  | hold 75% entH 0.46 conc 12.8 mv 0.6
-iter  190  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0076  ev +0.95  | hold 77% entH 0.49 conc 12.8 mv 0.6
-iter  191  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.93  kl 0.0067  ev +0.94  | hold 76% entH 0.48 conc 12.6 mv 0.6
-iter  192  mean_ep_reward +6.000  train_wr 1.00  best_bench 0.93  kl -0.0006  ev +0.87  | hold 81% entH 0.39 conc 12.9 mv 0.6
-iter  193  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.93  kl 0.0050  ev +0.96  | hold 80% entH 0.40 conc 12.9 mv 0.5
-iter  194  mean_ep_reward +5.252  train_wr 0.94  bench 0.90  best_bench 0.93  kl 0.0047  ev +0.96  | hold 82% entH 0.37 conc 12.4 mv 0.5
-iter  195  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0051  ev +0.95  | hold 80% entH 0.39 conc 13.5 mv 0.4
-iter  196  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0068  ev +0.97  | hold 81% entH 0.37 conc 13.1 mv 0.5
-iter  197  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0049  ev +0.95  | hold 75% entH 0.45 conc 12.7 mv 0.6
-iter  198  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0070  ev +0.97  | hold 80% entH 0.41 conc 13.2 mv 0.5
-iter  199  mean_ep_reward +3.751  train_wr 0.81  bench 0.90  best_bench 0.93  kl 0.0085  ev +0.97  | hold 79% entH 0.39 conc 12.8 mv 0.5
-iter  200  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0035  ev +0.97 (early-stop @ep2)  | hold 78% entH 0.44 conc 13.4 mv 0.5
-iter  201  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.93  kl 0.0074  ev +0.95  | hold 75% entH 0.47 conc 13.0 mv 0.5
-iter  202  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.93  kl 0.0044  ev +0.91  | hold 80% entH 0.40 conc 13.8 mv 0.4
-iter  203  mean_ep_reward +5.999  train_wr 1.00  best_bench 0.93  kl 0.0051  ev +0.91  | hold 80% entH 0.41 conc 13.7 mv 0.6
-iter  204  mean_ep_reward +3.000  train_wr 0.75  bench 0.90  best_bench 0.93  kl 0.0083  ev +0.97  | hold 78% entH 0.41 conc 13.3 mv 0.4
-iter  205  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.93  kl 0.0114  ev +0.96  | hold 78% entH 0.41 conc 13.1 mv 0.4
-iter  206  mean_ep_reward +3.762  train_wr 0.81  best_bench 0.93  kl 0.0056  ev +0.95 (early-stop @ep3)  | hold 79% entH 0.41 conc 13.6 mv 0.5
-iter  207  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.93  kl 0.0072  ev +0.97  | hold 72% entH 0.53 conc 13.3 mv 0.5
-iter  208  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.93  kl 0.0028  ev +0.92 (early-stop @ep2)  | hold 81% entH 0.40 conc 13.7 mv 0.5
-iter  209  mean_ep_reward +3.749  train_wr 0.81  bench 0.83  best_bench 0.93  kl 0.0097  ev +0.96  | hold 77% entH 0.44 conc 13.2 mv 0.5
-[early-stop] 'nearest_planet' bench set no new best for 8 eval ticks (~40 iters); best 0.93; stopping at iter 209 -> phase-1 done, seeding phase-2
-saved ppo2_phase1.pt
-=== [2/2] 2026-06-06 21:42:50Z  PPO phase-2 2p (full mix; runs until Ctrl-C) ===
-warm-started from ppo2_phase1_best.pt
+(.venv) PS C:\Users\ruben\Kaggle\OrbitWars\RLV2> powershell -ExecutionPolicy Bypass -File .\run_2p_phase2.ps1 -FromBest
+=== PPO phase-2 2p  init=ppo2_best.pt  2026-06-07 00:01:18Z (stabilized + gauntlet; Ctrl-C to stop) ===
+warm-started from ppo2_best.pt
 loaded external agent 'rl_v1' from ..\RL\submission_orbitnet.py
 [parallel] 8 CPU workers for collection + eval
-[2p] opponent=self | lr=0.0001 ent=0.003 clip=0.2 vf=0.5 | eps/iter=16 mb=128 kl=0.05 | coord_cap=2.0 hard_skip=False max_steps=500
-  mix (per non-focal slot, per episode): {'teacher': 0.15, 'script:defender': 0.05, 'script:most_production': 0.05, 'script:comet_user': 0.05, 'ext:rl_v1': 0.15, 'league': 0.55} | league_size=12 add_every=20
+[2p] opponent=self | lr=5e-05 ent=0.0005 clip=0.2 vf=0.5 | eps/iter=16 mb=128 kl=0.04 | coord_cap=2.0 hard_skip=False max_steps=500
+  mix (per non-focal slot, per episode): {'teacher': 0.2, 'weak': 0.1, 'script:defender': 0.05, 'script:most_production': 0.05, 'script:comet_user': 0.05, 'ext:rl_v1': 0.2, 'league': 0.35} | league_size=12 add_every=20
   selection: GREEDY benchmark vs teacher every 8 iters (30 eval-pool games) -> _best (submit target)
   also benchmarking vs: external:rl_v1, nearest_planet (30 games each per eval tick ù each keeps its own _best_<name>)
+  gauntlet: promote a snapshot when teacher bench >= 0.85 (>= 3 ticks apart); mix_gauntlet=0.15 keep=8 -> _gauntlet_<k>.pt + _best_gauntlet_<k>.pt
+  collapse-guard: stop after 15 iters with entH>=1.1 or hold<=0.4
 [warmup] collecting 12 games for value calibration...
-[warmup] 1797 states (collect win_rate 0.75); training value head 100 epochs @ lr 0.001...
-[warmup] epoch   0  value_loss 0.249
-[warmup] epoch  10  value_loss 0.100
-[warmup] epoch  20  value_loss 0.076
-[warmup] epoch  30  value_loss 0.057
-[warmup] epoch  40  value_loss 0.050
-[warmup] epoch  50  value_loss 0.039
-[warmup] epoch  60  value_loss 0.033
-[warmup] epoch  70  value_loss 0.030
-[warmup] epoch  80  value_loss 0.028
-[warmup] epoch  90  value_loss 0.027
-[warmup] epoch  99  value_loss 0.022
+[warmup] 2433 states (collect win_rate 0.50); training value head 100 epochs @ lr 0.001...
+[warmup] epoch   0  value_loss 0.290
+[warmup] epoch  10  value_loss 0.122
+[warmup] epoch  20  value_loss 0.082
+[warmup] epoch  30  value_loss 0.063
+[warmup] epoch  40  value_loss 0.063
+[warmup] epoch  50  value_loss 0.054
+[warmup] epoch  60  value_loss 0.039
+[warmup] epoch  70  value_loss 0.043
+[warmup] epoch  80  value_loss 0.034
+[warmup] epoch  90  value_loss 0.035
+[warmup] epoch  99  value_loss 0.028
 [warmup] done.
 [warmup] cached to ppo2_phase2_warmup.pt (reuse later with --warmup-cache ppo2_phase2_warmup.pt)
-[baseline] bench vs teacher 0.43 [external:rl_v1 0.37  nearest_planet 0.93]  -> saved ppo2_best.pt, ppo2_best_external_rl_v1.pt, ppo2_best_nearest_planet.pt
-iter    0  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.43  kl 0.0213  ev +0.93 (early-stop @ep1)  | hold 78% entH 0.40 conc 12.5 mv 0.5
-iter    1  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0116  ev +0.95 (early-stop @ep1)  | hold 67% entH 0.50 conc 11.5 mv 0.6
-iter    2  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.43  kl 0.0133  ev +0.95 (early-stop @ep1)  | hold 71% entH 0.52 conc 11.9 mv 0.7
-iter    3  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0319  ev +0.97 (early-stop @ep1)  | hold 76% entH 0.44 conc 12.7 mv 0.6
-iter    4  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0260  ev +0.96 (early-stop @ep1)  | hold 77% entH 0.40 conc 12.5 mv 0.5
-iter    5  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.43  kl 0.0039  ev +0.95 (early-stop @ep1)  | hold 66% entH 0.54 conc 12.3 mv 0.4
-iter    6  mean_ep_reward -3.000  train_wr 0.25  best_bench 0.43  kl 0.0220  ev +0.94 (early-stop @ep1)  | hold 70% entH 0.48 conc 11.7 mv 0.3
-iter    7  mean_ep_reward +0.750  train_wr 0.56  bench 0.27 [external:rl_v1 0.17  nearest_planet 0.90]  best_bench 0.43  kl 0.0167  ev +0.94 (early-stop @ep1)  | hold 75% entH 0.37 conc 11.9 mv 0.4
-iter    8  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.43  kl 0.0168  ev +0.96 (early-stop @ep1)  | hold 77% entH 0.34 conc 12.4 mv 0.3
-iter    9  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.43  kl 0.0073  ev +0.96 (early-stop @ep1)  | hold 82% entH 0.31 conc 13.5 mv 0.4
-iter   10  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0202  ev +0.96 (early-stop @ep1)  | hold 81% entH 0.28 conc 12.5 mv 0.3
-iter   11  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.43  kl 0.0234  ev +0.95 (early-stop @ep1)  | hold 79% entH 0.32 conc 12.7 mv 0.3
-iter   12  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0152  ev +0.93 (early-stop @ep1)  | hold 73% entH 0.35 conc 11.9 mv 0.4
-iter   13  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0143  ev +0.96 (early-stop @ep1)  | hold 78% entH 0.36 conc 13.4 mv 0.3
-iter   14  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0204  ev +0.94 (early-stop @ep2)  | hold 78% entH 0.37 conc 12.5 mv 0.3
-iter   15  mean_ep_reward +0.750  train_wr 0.56  bench 0.17 [external:rl_v1 0.27  nearest_planet 0.83]  best_bench 0.43  kl 0.0156  ev +0.94 (early-stop @ep1)  | hold 74% entH 0.41 conc 13.3 mv 0.3
-iter   16  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0191  ev +0.94 (early-stop @ep3)  | hold 82% entH 0.33 conc 14.1 mv 0.3
-iter   17  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0072  ev +0.96 (early-stop @ep1)  | hold 77% entH 0.33 conc 12.8 mv 0.3
-iter   18  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0174  ev +0.95 (early-stop @ep2)  | hold 79% entH 0.32 conc 13.5 mv 0.3
-iter   19  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.43  kl 0.0153  ev +0.96 (early-stop @ep1)  | hold 80% entH 0.32 conc 13.4 mv 0.3
-iter   20  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.43  kl 0.0096  ev +0.95 (early-stop @ep2)  | hold 79% entH 0.37 conc 13.0 mv 0.3
-iter   21  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.43  kl 0.0170  ev +0.94 (early-stop @ep2)  | hold 84% entH 0.33 conc 13.9 mv 0.2
-iter   22  mean_ep_reward +1.552  train_wr 0.62  best_bench 0.43  kl 0.0088  ev +0.93 (early-stop @ep1)  | hold 86% entH 0.30 conc 14.4 mv 0.2
-iter   23  mean_ep_reward +3.000  train_wr 0.75  bench 0.17 [external:rl_v1 0.20  nearest_planet 0.83]  best_bench 0.43  kl 0.0025  ev +0.94 (early-stop @ep1)  | hold 87% entH 0.25 conc 14.5 mv 0.2
-iter   24  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0126  ev +0.93 (early-stop @ep3)  | hold 82% entH 0.29 conc 13.5 mv 0.2
-iter   25  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0154  ev +0.95 (early-stop @ep2)  | hold 84% entH 0.32 conc 13.7 mv 0.2
-iter   26  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.43  kl 0.0103  ev +0.93 (early-stop @ep1)  | hold 86% entH 0.29 conc 14.5 mv 0.2
-iter   27  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0195  ev +0.95 (early-stop @ep2)  | hold 82% entH 0.42 conc 14.5 mv 0.3
-iter   28  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.43  kl 0.0086  ev +0.95 (early-stop @ep2)  | hold 83% entH 0.34 conc 14.5 mv 0.2
-iter   29  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.43  kl 0.0133  ev +0.95 (early-stop @ep3)  | hold 79% entH 0.41 conc 14.6 mv 0.4
-iter   30  mean_ep_reward +0.752  train_wr 0.56  best_bench 0.43  kl 0.0085  ev +0.94 (early-stop @ep1)  | hold 79% entH 0.43 conc 14.3 mv 0.3
-iter   31  mean_ep_reward -1.495  train_wr 0.38  bench 0.17 [external:rl_v1 0.13  nearest_planet 0.77]  best_bench 0.43  kl 0.0117  ev +0.94 (early-stop @ep2)  | hold 81% entH 0.39 conc 14.2 mv 0.3
-iter   32  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0083  ev +0.95 (early-stop @ep2)  | hold 82% entH 0.35 conc 14.2 mv 0.3
-iter   33  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0097  ev +0.94 (early-stop @ep1)  | hold 82% entH 0.34 conc 14.3 mv 0.2
-iter   34  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.43  kl 0.0092  ev +0.93 (early-stop @ep2)  | hold 78% entH 0.41 conc 14.1 mv 0.2
-iter   35  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.43  kl 0.0105  ev +0.93 (early-stop @ep1)  | hold 77% entH 0.39 conc 13.9 mv 0.2
-iter   36  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0179  ev +0.96 (early-stop @ep2)  | hold 75% entH 0.45 conc 14.4 mv 0.3
-iter   37  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0119  ev +0.95 (early-stop @ep3)  | hold 80% entH 0.37 conc 14.7 mv 0.3
-iter   38  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.43  kl 0.0071  ev +0.96 (early-stop @ep2)  | hold 83% entH 0.35 conc 15.3 mv 0.3
-iter   39  mean_ep_reward +2.999  train_wr 0.75  bench 0.27 [external:rl_v1 0.20  nearest_planet 0.87]  best_bench 0.43  kl 0.0183  ev +0.95 (early-stop @ep3)  | hold 73% entH 0.52 conc 15.0 mv 0.3
-iter   40  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0070  ev +0.95 (early-stop @ep2)  | hold 75% entH 0.46 conc 14.8 mv 0.4
-iter   41  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.43  kl 0.0121  ev +0.95  | hold 87% entH 0.27 conc 15.6 mv 0.3
-iter   42  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0109  ev +0.95 (early-stop @ep3)  | hold 81% entH 0.35 conc 15.1 mv 0.3
-iter   43  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0112  ev +0.95  | hold 74% entH 0.42 conc 14.4 mv 0.3
-iter   44  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.43  kl 0.0151  ev +0.96 (early-stop @ep1)  | hold 77% entH 0.46 conc 14.9 mv 0.3
-iter   45  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0087  ev +0.97 (early-stop @ep2)  | hold 73% entH 0.51 conc 14.3 mv 0.3
-iter   46  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.43  kl 0.0119  ev +0.96 (early-stop @ep2)  | hold 78% entH 0.47 conc 15.0 mv 0.4
-iter   47  mean_ep_reward +3.750  train_wr 0.81  bench 0.33 [external:rl_v1 0.27  nearest_planet 0.87]  best_bench 0.43  kl 0.0098  ev +0.96 (early-stop @ep2)  | hold 80% entH 0.41 conc 15.1 mv 0.3
-iter   48  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0153  ev +0.96 (early-stop @ep1)  | hold 71% entH 0.55 conc 14.5 mv 0.3
-iter   49  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.43  kl 0.0110  ev +0.97 (early-stop @ep2)  | hold 63% entH 0.66 conc 13.3 mv 0.4
-iter   50  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.43  kl 0.0176  ev +0.96 (early-stop @ep3)  | hold 68% entH 0.56 conc 13.7 mv 0.3
-iter   51  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.43  kl 0.0100  ev +0.96 (early-stop @ep2)  | hold 76% entH 0.52 conc 14.7 mv 0.3
-iter   52  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.43  kl 0.0081  ev +0.96 (early-stop @ep2)  | hold 77% entH 0.45 conc 14.0 mv 0.3
-iter   53  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.43  kl 0.0104  ev +0.97 (early-stop @ep2)  | hold 74% entH 0.46 conc 13.9 mv 0.4
-iter   54  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.43  kl 0.0128  ev +0.94 (early-stop @ep2)  | hold 79% entH 0.42 conc 14.6 mv 0.3
-iter   55  mean_ep_reward +1.500  train_wr 0.62  bench 0.50 [external:rl_v1 0.30  nearest_planet 0.93]  best_bench 0.50  kl 0.0110  ev +0.96  | hold 81% entH 0.39 conc 14.0 mv 0.3  *saved ppo2_best.pt
-iter   56  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.50  kl 0.0145  ev +0.96  | hold 86% entH 0.32 conc 15.1 mv 0.4
-iter   57  mean_ep_reward -0.001  train_wr 0.50  best_bench 0.50  kl 0.0137  ev +0.96  | hold 75% entH 0.47 conc 13.9 mv 0.4
-iter   58  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.50  kl 0.0166  ev +0.96 (early-stop @ep3)  | hold 71% entH 0.64 conc 14.5 mv 0.4
-iter   59  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.50  kl 0.0089  ev +0.97 (early-stop @ep2)  | hold 76% entH 0.50 conc 14.9 mv 0.4
-iter   60  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.50  kl 0.0134  ev +0.96  | hold 78% entH 0.43 conc 14.8 mv 0.3
-iter   61  mean_ep_reward +0.751  train_wr 0.56  best_bench 0.50  kl 0.0102  ev +0.96 (early-stop @ep2)  | hold 76% entH 0.45 conc 14.8 mv 0.3
-iter   62  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.50  kl 0.0143  ev +0.96 (early-stop @ep2)  | hold 77% entH 0.45 conc 14.5 mv 0.4
-iter   63  mean_ep_reward +2.250  train_wr 0.69  bench 0.30 [external:rl_v1 0.33  nearest_planet 0.87]  best_bench 0.50  kl 0.0118  ev +0.96  | hold 82% entH 0.42 conc 15.1 mv 0.3
-iter   64  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.50  kl 0.0060  ev +0.96  | hold 81% entH 0.39 conc 14.8 mv 0.3
-iter   65  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.50  kl 0.0090  ev +0.98  | hold 82% entH 0.33 conc 15.2 mv 0.4
-iter   66  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.50  kl 0.0069  ev +0.94 (early-stop @ep1)  | hold 88% entH 0.30 conc 15.5 mv 0.3
-iter   67  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.50  kl 0.0092  ev +0.97 (early-stop @ep1)  | hold 82% entH 0.35 conc 14.8 mv 0.4
-iter   68  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.50  kl 0.0064  ev +0.96 (early-stop @ep2)  | hold 87% entH 0.26 conc 15.0 mv 0.4
-iter   69  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.50  kl 0.0074  ev +0.97 (early-stop @ep2)  | hold 86% entH 0.31 conc 15.4 mv 0.3
-iter   70  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.50  kl 0.0076  ev +0.96 (early-stop @ep2)  | hold 87% entH 0.28 conc 15.6 mv 0.4
-iter   71  mean_ep_reward +2.999  train_wr 0.75  bench 0.53 [external:rl_v1 0.50  nearest_planet 0.97]  best_bench 0.53  kl 0.0099  ev +0.96 (early-stop @ep3)  | hold 85% entH 0.32 conc 15.4 mv 0.4  *saved ppo2_best.pt, ppo2_best_external_rl_v1.pt, ppo2_best_nearest_planet.pt
-iter   72  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.53  kl 0.0109  ev +0.96 (early-stop @ep3)  | hold 87% entH 0.28 conc 15.4 mv 0.4
-iter   73  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.53  kl 0.0086  ev +0.95 (early-stop @ep2)  | hold 86% entH 0.26 conc 15.2 mv 0.3
-iter   74  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.53  kl 0.0084  ev +0.97  | hold 86% entH 0.31 conc 15.5 mv 0.4
-iter   75  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.53  kl 0.0138  ev +0.96  | hold 82% entH 0.31 conc 15.0 mv 0.4
-iter   76  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.53  kl 0.0107  ev +0.93 (early-stop @ep3)  | hold 87% entH 0.28 conc 15.4 mv 0.4
-iter   77  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.53  kl 0.0087  ev +0.95 (early-stop @ep1)  | hold 88% entH 0.29 conc 15.8 mv 0.4
-iter   78  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.53  kl 0.0102  ev +0.97  | hold 89% entH 0.24 conc 15.7 mv 0.3
-iter   79  mean_ep_reward +3.749  train_wr 0.81  bench 0.63 [external:rl_v1 0.43  nearest_planet 0.90]  best_bench 0.63  kl 0.0146  ev +0.96  | hold 86% entH 0.28 conc 15.4 mv 0.4  *saved ppo2_best.pt
-iter   80  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.63  kl 0.0096  ev +0.97  | hold 82% entH 0.33 conc 15.3 mv 0.4
-iter   81  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.63  kl 0.0142  ev +0.95  | hold 80% entH 0.45 conc 15.3 mv 0.4
-iter   82  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.63  kl 0.0056  ev +0.96  | hold 87% entH 0.29 conc 15.5 mv 0.4
-iter   83  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.63  kl 0.0138  ev +0.96  | hold 84% entH 0.35 conc 15.1 mv 0.4
-iter   84  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.63  kl 0.0093  ev +0.93 (early-stop @ep2)  | hold 86% entH 0.31 conc 15.4 mv 0.4
-iter   85  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.63  kl 0.0131  ev +0.96  | hold 84% entH 0.37 conc 14.9 mv 0.4
-iter   86  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.63  kl 0.0134  ev +0.97  | hold 82% entH 0.32 conc 14.7 mv 0.4
-iter   87  mean_ep_reward +3.749  train_wr 0.81  bench 0.67 [external:rl_v1 0.47  nearest_planet 0.87]  best_bench 0.67  kl 0.0156  ev +0.97  | hold 84% entH 0.35 conc 15.0 mv 0.4  *saved ppo2_best.pt
-iter   88  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0164  ev +0.97  | hold 77% entH 0.44 conc 14.3 mv 0.4
-iter   89  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0127  ev +0.97 (early-stop @ep3)  | hold 77% entH 0.51 conc 14.7 mv 0.4
-iter   90  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.67  kl 0.0112  ev +0.94  | hold 85% entH 0.36 conc 15.4 mv 0.4
-iter   91  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0151  ev +0.95  | hold 83% entH 0.46 conc 14.8 mv 0.4
-iter   92  mean_ep_reward +5.999  train_wr 1.00  best_bench 0.67  kl 0.0077  ev +0.90  | hold 88% entH 0.28 conc 15.3 mv 0.4
-iter   93  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0156  ev +0.97  | hold 72% entH 0.67 conc 14.7 mv 0.5
-iter   94  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0121  ev +0.97  | hold 77% entH 0.52 conc 14.2 mv 0.4
-iter   95  mean_ep_reward +5.250  train_wr 0.94  bench 0.63 [external:rl_v1 0.50  nearest_planet 0.90]  best_bench 0.67  kl 0.0111  ev +0.97  | hold 88% entH 0.30 conc 15.7 mv 0.4
-iter   96  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0082  ev +0.96  | hold 81% entH 0.44 conc 14.9 mv 0.3
-iter   97  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0084  ev +0.96  | hold 84% entH 0.38 conc 14.7 mv 0.4
-iter   98  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.67  kl 0.0077  ev +0.96 (early-stop @ep2)  | hold 83% entH 0.42 conc 15.2 mv 0.4
-iter   99  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0109  ev +0.97  | hold 86% entH 0.33 conc 14.9 mv 0.3
-iter  100  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0088  ev +0.97  | hold 84% entH 0.40 conc 15.0 mv 0.3
-iter  101  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0117  ev +0.97 (early-stop @ep3)  | hold 76% entH 0.54 conc 14.9 mv 0.4
-iter  102  mean_ep_reward +5.250  train_wr 0.94  best_bench 0.67  kl 0.0094  ev +0.95  | hold 86% entH 0.30 conc 15.6 mv 0.3
-iter  103  mean_ep_reward +3.750  train_wr 0.81  bench 0.60 [external:rl_v1 0.53  nearest_planet 0.90]  best_bench 0.67  kl 0.0062  ev +0.96 (early-stop @ep2)  | hold 84% entH 0.31 conc 15.1 mv 0.4  *saved ppo2_best_external_rl_v1.pt
-iter  104  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0206  ev +0.97 (early-stop @ep1)  | hold 74% entH 0.58 conc 14.1 mv 0.4
-iter  105  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0102  ev +0.96 (early-stop @ep2)  | hold 86% entH 0.34 conc 14.9 mv 0.3
-iter  106  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0119  ev +0.95  | hold 81% entH 0.41 conc 15.0 mv 0.3
-iter  107  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0049  ev +0.98 (early-stop @ep2)  | hold 83% entH 0.38 conc 14.8 mv 0.3
-iter  108  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0093  ev +0.97 (early-stop @ep2)  | hold 83% entH 0.40 conc 15.1 mv 0.4
-iter  109  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0149  ev +0.96 (early-stop @ep3)  | hold 76% entH 0.54 conc 14.5 mv 0.4
-iter  110  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0161  ev +0.97  | hold 79% entH 0.43 conc 14.1 mv 0.3
-iter  111  mean_ep_reward +2.250  train_wr 0.69  bench 0.50 [external:rl_v1 0.37  nearest_planet 0.87]  best_bench 0.67  kl 0.0154  ev +0.95  | hold 80% entH 0.44 conc 14.1 mv 0.3
-iter  112  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0138  ev +0.96 (early-stop @ep2)  | hold 74% entH 0.66 conc 13.4 mv 0.5
-iter  113  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0123  ev +0.96 (early-stop @ep2)  | hold 72% entH 0.64 conc 13.0 mv 0.5
-iter  114  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0078  ev +0.96  | hold 79% entH 0.53 conc 13.3 mv 0.4
-iter  115  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0148  ev +0.97  | hold 78% entH 0.54 conc 12.8 mv 0.4
-iter  116  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0129  ev +0.95  | hold 77% entH 0.51 conc 13.5 mv 0.4
-iter  117  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0186  ev +0.96 (early-stop @ep3)  | hold 77% entH 0.51 conc 12.8 mv 0.3
-iter  118  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0095  ev +0.97  | hold 81% entH 0.43 conc 13.6 mv 0.4
-iter  119  mean_ep_reward +3.000  train_wr 0.75  bench 0.43 [external:rl_v1 0.40  nearest_planet 0.73]  best_bench 0.67  kl 0.0054  ev +0.96 (early-stop @ep1)  | hold 76% entH 0.52 conc 12.7 mv 0.4
-iter  120  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0163  ev +0.97  | hold 67% entH 0.57 conc 10.5 mv 0.5
-iter  121  mean_ep_reward +2.205  train_wr 0.69  best_bench 0.67  kl 0.0090  ev +0.96 (early-stop @ep2)  | hold 74% entH 0.52 conc 10.9 mv 0.5
-iter  122  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0133  ev +0.97  | hold 79% entH 0.47 conc 11.6 mv 0.4
-iter  123  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0119  ev +0.96 (early-stop @ep2)  | hold 74% entH 0.50 conc 10.9 mv 0.5
-iter  124  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0127  ev +0.97 (early-stop @ep2)  | hold 73% entH 0.52 conc 11.3 mv 0.5
-iter  125  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0134  ev +0.96 (early-stop @ep2)  | hold 64% entH 0.62 conc 9.5 mv 0.6
-iter  126  mean_ep_reward +0.749  train_wr 0.56  best_bench 0.67  kl 0.0187  ev +0.96 (early-stop @ep3)  | hold 64% entH 0.61 conc 9.2 mv 0.6
-iter  127  mean_ep_reward +2.250  train_wr 0.69  bench 0.37 [external:rl_v1 0.33  nearest_planet 0.83]  best_bench 0.67  kl 0.0070  ev +0.98 (early-stop @ep2)  | hold 73% entH 0.53 conc 11.0 mv 0.5
-iter  128  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0162  ev +0.96  | hold 78% entH 0.46 conc 11.8 mv 0.5
-iter  129  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0114  ev +0.96  | hold 68% entH 0.64 conc 10.9 mv 0.5
-iter  130  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0167  ev +0.97 (early-stop @ep2)  | hold 68% entH 0.64 conc 10.5 mv 0.6
-iter  131  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0075  ev +0.96 (early-stop @ep1)  | hold 64% entH 0.79 conc 9.9 mv 0.6
-iter  132  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0110  ev +0.95  | hold 75% entH 0.51 conc 10.2 mv 0.5
-iter  133  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.67  kl 0.0150  ev +0.96  | hold 71% entH 0.49 conc 10.6 mv 0.5
-iter  134  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0149  ev +0.95  | hold 60% entH 0.92 conc 8.8 mv 0.6
-iter  135  mean_ep_reward +0.750  train_wr 0.56  bench 0.33 [external:rl_v1 0.33  nearest_planet 0.70]  best_bench 0.67  kl 0.0170  ev +0.97 (early-stop @ep3)  | hold 60% entH 0.85 conc 8.4 mv 0.6
-iter  136  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0129  ev +0.96  | hold 79% entH 0.53 conc 10.7 mv 0.5
-iter  137  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0114  ev +0.97  | hold 71% entH 0.63 conc 10.3 mv 0.6
-iter  138  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0165  ev +0.95 (early-stop @ep2)  | hold 62% entH 0.81 conc 8.3 mv 0.6
-iter  139  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0140  ev +0.98  | hold 66% entH 0.74 conc 10.6 mv 0.6
-iter  140  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0144  ev +0.98 (early-stop @ep2)  | hold 68% entH 0.70 conc 9.9 mv 0.5
-iter  141  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0177  ev +0.97  | hold 72% entH 0.60 conc 10.6 mv 0.5
-iter  142  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0152  ev +0.97  | hold 63% entH 0.78 conc 8.9 mv 0.7
-iter  143  mean_ep_reward +0.750  train_wr 0.56  bench 0.20 [external:rl_v1 0.27  nearest_planet 0.67]  best_bench 0.67  kl 0.0104  ev +0.96 (early-stop @ep2)  | hold 58% entH 0.92 conc 8.6 mv 0.6
-iter  144  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0125  ev +0.96 (early-stop @ep2)  | hold 53% entH 0.90 conc 7.3 mv 0.7
-iter  145  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0194  ev +0.95  | hold 57% entH 0.90 conc 7.6 mv 0.7
-iter  146  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0178  ev +0.96  | hold 59% entH 0.81 conc 8.4 mv 0.7
-iter  147  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0106  ev +0.96 (early-stop @ep2)  | hold 48% entH 1.09 conc 6.8 mv 0.7
-iter  148  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0194  ev +0.97 (early-stop @ep2)  | hold 63% entH 0.81 conc 8.4 mv 0.7
-iter  149  mean_ep_reward -3.749  train_wr 0.19  best_bench 0.67  kl 0.0147  ev +0.92 (early-stop @ep2)  | hold 38% entH 1.26 conc 5.2 mv 0.8
-iter  150  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0139  ev +0.98  | hold 48% entH 1.08 conc 7.5 mv 0.6
-iter  151  mean_ep_reward +2.999  train_wr 0.75  bench 0.07 [external:rl_v1 0.17  nearest_planet 0.63]  best_bench 0.67  kl 0.0132  ev +0.95  | hold 56% entH 0.92 conc 7.9 mv 0.8
-iter  152  mean_ep_reward -2.995  train_wr 0.25  best_bench 0.67  kl 0.0133  ev +0.93 (early-stop @ep3)  | hold 42% entH 1.27 conc 5.9 mv 0.9
-iter  153  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0119  ev +0.96 (early-stop @ep2)  | hold 54% entH 1.02 conc 7.2 mv 0.8
-iter  154  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0140  ev +0.98 (early-stop @ep3)  | hold 50% entH 1.04 conc 7.4 mv 0.6
-iter  155  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0175  ev +0.96  | hold 56% entH 0.94 conc 7.2 mv 0.8
-iter  156  mean_ep_reward -1.497  train_wr 0.38  best_bench 0.67  kl 0.0137  ev +0.96 (early-stop @ep2)  | hold 47% entH 1.13 conc 6.4 mv 0.9
-iter  157  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0082  ev +0.97 (early-stop @ep1)  | hold 45% entH 1.14 conc 6.4 mv 0.7
-iter  158  mean_ep_reward +0.751  train_wr 0.56  best_bench 0.67  kl 0.0180  ev +0.96 (early-stop @ep3)  | hold 51% entH 0.98 conc 7.5 mv 0.7
-iter  159  mean_ep_reward +2.250  train_wr 0.69  bench 0.33 [external:rl_v1 0.20  nearest_planet 0.70]  best_bench 0.67  kl 0.0124  ev +0.95  | hold 65% entH 0.81 conc 7.6 mv 0.6
-iter  160  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.67  kl 0.0152  ev +0.97 (early-stop @ep3)  | hold 50% entH 1.01 conc 6.7 mv 0.6
-iter  161  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0151  ev +0.95  | hold 60% entH 1.03 conc 7.1 mv 0.6
-iter  162  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0131  ev +0.97 (early-stop @ep3)  | hold 63% entH 0.81 conc 7.4 mv 0.6
-iter  163  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0115  ev +0.97 (early-stop @ep3)  | hold 54% entH 0.96 conc 7.2 mv 0.6
-iter  164  mean_ep_reward +0.002  train_wr 0.50  best_bench 0.67  kl 0.0146  ev +0.95 (early-stop @ep2)  | hold 47% entH 1.08 conc 5.9 mv 0.9
-iter  165  mean_ep_reward -0.001  train_wr 0.50  best_bench 0.67  kl 0.0158  ev +0.96  | hold 54% entH 1.07 conc 5.9 mv 0.9
-iter  166  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0120  ev +0.97  | hold 56% entH 0.96 conc 6.6 mv 0.8
-iter  167  mean_ep_reward -0.000  train_wr 0.50  bench 0.20 [external:rl_v1 0.20  nearest_planet 0.70]  best_bench 0.67  kl 0.0119  ev +0.96  | hold 52% entH 0.89 conc 6.1 mv 0.8
-iter  168  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0090  ev +0.96 (early-stop @ep2)  | hold 50% entH 1.21 conc 5.8 mv 0.8
-iter  169  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.67  kl 0.0194  ev +0.97  | hold 53% entH 1.03 conc 6.5 mv 0.8
-iter  170  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0144  ev +0.97  | hold 44% entH 1.18 conc 5.0 mv 0.5
-iter  171  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0138  ev +0.96  | hold 58% entH 0.90 conc 6.5 mv 0.8
-iter  172  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0162  ev +0.95 (early-stop @ep3)  | hold 51% entH 1.19 conc 5.0 mv 0.8
-iter  173  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0150  ev +0.96  | hold 55% entH 0.97 conc 5.3 mv 0.7
-iter  174  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0207  ev +0.95  | hold 68% entH 0.73 conc 6.6 mv 0.7
-iter  175  mean_ep_reward -2.250  train_wr 0.31  bench 0.23 [external:rl_v1 0.20  nearest_planet 0.63]  best_bench 0.67  kl 0.0100  ev +0.96 (early-stop @ep1)  | hold 43% entH 1.21 conc 4.2 mv 0.9
-iter  176  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0104  ev +0.96  | hold 70% entH 0.66 conc 6.4 mv 0.6
-iter  177  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.67  kl 0.0099  ev +0.98  | hold 62% entH 0.79 conc 5.4 mv 0.7
-iter  178  mean_ep_reward +0.749  train_wr 0.56  best_bench 0.67  kl 0.0119  ev +0.96 (early-stop @ep3)  | hold 50% entH 1.05 conc 4.9 mv 0.7
-iter  179  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0087  ev +0.95 (early-stop @ep2)  | hold 51% entH 0.95 conc 4.7 mv 0.8
-iter  180  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0058  ev +0.96 (early-stop @ep2)  | hold 50% entH 1.06 conc 4.2 mv 0.7
-iter  181  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0189  ev +0.97  | hold 61% entH 0.83 conc 5.2 mv 0.8
-iter  182  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0178  ev +0.98  | hold 56% entH 1.00 conc 5.4 mv 0.8
-iter  183  mean_ep_reward +1.499  train_wr 0.62  bench 0.10 [external:rl_v1 0.13  nearest_planet 0.63]  best_bench 0.67  kl 0.0129  ev +0.96  | hold 59% entH 0.86 conc 4.8 mv 0.8
-iter  184  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0104  ev +0.96 (early-stop @ep1)  | hold 50% entH 1.16 conc 5.4 mv 0.6
-iter  185  mean_ep_reward -3.000  train_wr 0.25  best_bench 0.67  kl 0.0155  ev +0.95 (early-stop @ep3)  | hold 42% entH 1.24 conc 4.8 mv 0.8
-iter  186  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0148  ev +0.96 (early-stop @ep2)  | hold 35% entH 1.34 conc 4.6 mv 0.8
-iter  187  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0107  ev +0.97  | hold 52% entH 1.02 conc 5.2 mv 0.7
-iter  188  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0099  ev +0.97  | hold 60% entH 0.90 conc 5.6 mv 0.7
-iter  189  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.67  kl 0.0057  ev +0.97 (early-stop @ep1)  | hold 64% entH 0.84 conc 5.0 mv 0.8
-iter  190  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.67  kl 0.0115  ev +0.98 (early-stop @ep2)  | hold 50% entH 0.97 conc 5.0 mv 0.6
-iter  191  mean_ep_reward +2.260  train_wr 0.69  bench 0.20 [external:rl_v1 0.20  nearest_planet 0.60]  best_bench 0.67  kl 0.0145  ev +0.95  | hold 58% entH 0.90 conc 5.0 mv 0.7
-iter  192  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0130  ev +0.97  | hold 62% entH 0.80 conc 5.5 mv 0.8
-iter  193  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0125  ev +0.97 (early-stop @ep2)  | hold 47% entH 1.16 conc 4.6 mv 0.7
-iter  194  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0149  ev +0.96 (early-stop @ep3)  | hold 42% entH 1.29 conc 5.0 mv 0.5
-iter  195  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0099  ev +0.97  | hold 46% entH 1.19 conc 4.3 mv 0.6
-iter  196  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0134  ev +0.95  | hold 46% entH 1.14 conc 4.5 mv 0.6
-iter  197  mean_ep_reward +0.749  train_wr 0.56  best_bench 0.67  kl 0.0150  ev +0.96  | hold 52% entH 1.12 conc 4.1 mv 0.8
-iter  198  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0147  ev +0.96  | hold 53% entH 1.13 conc 5.3 mv 0.7
-iter  199  mean_ep_reward -3.000  train_wr 0.25  bench 0.10 [external:rl_v1 0.23  nearest_planet 0.53]  best_bench 0.67  kl 0.0085  ev +0.96 (early-stop @ep2)  | hold 41% entH 1.27 conc 4.4 mv 0.8
-iter  200  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0106  ev +0.97  | hold 59% entH 0.91 conc 4.8 mv 0.8
-iter  201  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0109  ev +0.97  | hold 51% entH 1.05 conc 4.9 mv 0.9
-iter  202  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0073  ev +0.95  | hold 61% entH 0.86 conc 5.3 mv 0.6
-iter  203  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.67  kl 0.0109  ev +0.96 (early-stop @ep2)  | hold 51% entH 0.97 conc 4.2 mv 0.8
-iter  204  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0134  ev +0.97 (early-stop @ep3)  | hold 57% entH 0.96 conc 5.2 mv 0.7
-iter  205  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0105  ev +0.97 (early-stop @ep1)  | hold 55% entH 0.97 conc 5.2 mv 0.7
-iter  206  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0119  ev +0.97  | hold 57% entH 0.93 conc 5.1 mv 0.7
-iter  207  mean_ep_reward +0.750  train_wr 0.56  bench 0.23 [external:rl_v1 0.20  nearest_planet 0.63]  best_bench 0.67  kl 0.0133  ev +0.96 (early-stop @ep3)  | hold 57% entH 1.00 conc 5.1 mv 0.9
-iter  208  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0151  ev +0.95 (early-stop @ep2)  | hold 50% entH 1.10 conc 4.7 mv 0.7
-iter  209  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0125  ev +0.97  | hold 60% entH 0.88 conc 5.0 mv 0.7
-iter  210  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0179  ev +0.96  | hold 45% entH 1.24 conc 5.0 mv 0.8
-iter  211  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0127  ev +0.97  | hold 37% entH 1.27 conc 4.1 mv 0.8
-iter  212  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0135  ev +0.97  | hold 56% entH 0.91 conc 4.3 mv 0.7
-iter  213  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0089  ev +0.97 (early-stop @ep3)  | hold 56% entH 0.94 conc 3.8 mv 0.7
-iter  214  mean_ep_reward +0.060  train_wr 0.50  best_bench 0.67  kl 0.0128  ev +0.95  | hold 54% entH 1.08 conc 4.0 mv 0.6
-iter  215  mean_ep_reward -0.000  train_wr 0.50  bench 0.20 [external:rl_v1 0.13  nearest_planet 0.60]  best_bench 0.67  kl 0.0185  ev +0.96  | hold 50% entH 1.12 conc 4.0 mv 0.8
-iter  216  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0140  ev +0.97 (early-stop @ep3)  | hold 49% entH 1.07 conc 3.5 mv 0.8
-iter  217  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0125  ev +0.97  | hold 43% entH 1.27 conc 4.2 mv 0.8
-iter  218  mean_ep_reward +0.001  train_wr 0.50  best_bench 0.67  kl 0.0154  ev +0.96  | hold 56% entH 1.05 conc 4.6 mv 0.7
-iter  219  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0143  ev +0.96 (early-stop @ep3)  | hold 41% entH 1.29 conc 3.5 mv 0.6
-iter  220  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0119  ev +0.97  | hold 49% entH 1.17 conc 3.7 mv 0.7
-iter  221  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0167  ev +0.96  | hold 54% entH 1.12 conc 4.1 mv 0.6
-iter  222  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0112  ev +0.98  | hold 51% entH 1.18 conc 3.9 mv 0.8
-iter  223  mean_ep_reward -0.750  train_wr 0.44  bench 0.20 [external:rl_v1 0.13  nearest_planet 0.63]  best_bench 0.67  kl 0.0083  ev +0.96 (early-stop @ep3)  | hold 46% entH 1.18 conc 3.8 mv 0.7
-iter  224  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.67  kl 0.0080  ev +0.96 (early-stop @ep1)  | hold 54% entH 1.11 conc 4.1 mv 0.7
-iter  225  mean_ep_reward -0.001  train_wr 0.50  best_bench 0.67  kl 0.0069  ev +0.96 (early-stop @ep1)  | hold 50% entH 1.12 conc 3.5 mv 0.6
-iter  226  mean_ep_reward +2.255  train_wr 0.69  best_bench 0.67  kl 0.0150  ev +0.96  | hold 59% entH 0.92 conc 3.6 mv 0.7
-iter  227  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0168  ev +0.96  | hold 44% entH 1.20 conc 3.7 mv 0.6
-iter  228  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0117  ev +0.96  | hold 50% entH 1.05 conc 3.9 mv 0.6
-iter  229  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0066  ev +0.97 (early-stop @ep1)  | hold 39% entH 1.24 conc 3.7 mv 0.6
-iter  230  mean_ep_reward -3.747  train_wr 0.19  best_bench 0.67  kl 0.0170  ev +0.95  | hold 35% entH 1.41 conc 3.8 mv 0.9
-iter  231  mean_ep_reward +1.543  train_wr 0.62  bench 0.20 [external:rl_v1 0.13  nearest_planet 0.63]  best_bench 0.67  kl 0.0115  ev +0.96 (early-stop @ep2)  | hold 56% entH 0.92 conc 3.9 mv 0.7
-iter  232  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0066  ev +0.96  | hold 55% entH 1.02 conc 4.3 mv 0.6
-iter  233  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0168  ev +0.97  | hold 44% entH 1.22 conc 3.5 mv 0.8
-iter  234  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0078  ev +0.97 (early-stop @ep3)  | hold 44% entH 1.00 conc 3.6 mv 0.8
-iter  235  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0111  ev +0.97 (early-stop @ep3)  | hold 50% entH 1.13 conc 4.2 mv 0.9
-iter  236  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.67  kl 0.0130  ev +0.97 (early-stop @ep1)  | hold 46% entH 1.09 conc 3.7 mv 0.8
-iter  237  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0156  ev +0.96 (early-stop @ep3)  | hold 36% entH 1.31 conc 4.4 mv 0.8
-iter  238  mean_ep_reward -2.249  train_wr 0.31  best_bench 0.67  kl 0.0113  ev +0.96 (early-stop @ep3)  | hold 35% entH 1.25 conc 4.0 mv 0.9
-iter  239  mean_ep_reward -1.500  train_wr 0.38  bench 0.23 [external:rl_v1 0.10  nearest_planet 0.67]  best_bench 0.67  kl 0.0139  ev +0.97  | hold 38% entH 1.30 conc 3.8 mv 0.8
-iter  240  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0204  ev +0.96  | hold 39% entH 1.43 conc 4.6 mv 0.8
-iter  241  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0153  ev +0.97  | hold 38% entH 1.29 conc 3.3 mv 1.0
-iter  242  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0137  ev +0.97  | hold 35% entH 1.39 conc 3.9 mv 1.0
-iter  243  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0134  ev +0.96  | hold 31% entH 1.54 conc 4.1 mv 1.1
-iter  244  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0180  ev +0.96  | hold 33% entH 1.41 conc 3.7 mv 1.0
-iter  245  mean_ep_reward -0.747  train_wr 0.44  best_bench 0.67  kl 0.0149  ev +0.97  | hold 39% entH 1.29 conc 3.5 mv 0.9
-iter  246  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0130  ev +0.97  | hold 32% entH 1.40 conc 3.3 mv 1.0
-iter  247  mean_ep_reward +0.750  train_wr 0.56  bench 0.20 [external:rl_v1 0.17  nearest_planet 0.73]  best_bench 0.67  kl 0.0134  ev +0.98  | hold 42% entH 1.31 conc 3.3 mv 1.2
-iter  248  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0182  ev +0.96  | hold 37% entH 1.35 conc 3.4 mv 0.8
-iter  249  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.67  kl 0.0134  ev +0.97  | hold 41% entH 1.32 conc 3.7 mv 1.1
-iter  250  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0159  ev +0.97  | hold 31% entH 1.42 conc 3.5 mv 1.3
-iter  251  mean_ep_reward +0.001  train_wr 0.50  best_bench 0.67  kl 0.0147  ev +0.96  | hold 39% entH 1.47 conc 3.8 mv 1.4
-iter  252  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0105  ev +0.96 (early-stop @ep2)  | hold 42% entH 1.22 conc 4.3 mv 0.9
-iter  253  mean_ep_reward -3.750  train_wr 0.19  best_bench 0.67  kl 0.0123  ev +0.96 (early-stop @ep3)  | hold 23% entH 1.64 conc 3.6 mv 1.0
-iter  254  mean_ep_reward -3.750  train_wr 0.19  best_bench 0.67  kl 0.0133  ev +0.96 (early-stop @ep3)  | hold 21% entH 1.69 conc 3.1 mv 1.3
-iter  255  mean_ep_reward +1.500  train_wr 0.62  bench 0.17 [external:rl_v1 0.13  nearest_planet 0.63]  best_bench 0.67  kl 0.0100  ev +0.97  | hold 46% entH 1.25 conc 3.8 mv 1.1
-iter  256  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.67  kl 0.0129  ev +0.96 (early-stop @ep3)  | hold 41% entH 1.46 conc 4.4 mv 1.0
-iter  257  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0133  ev +0.97  | hold 26% entH 1.66 conc 3.6 mv 1.2
-iter  258  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0102  ev +0.97  | hold 39% entH 1.38 conc 3.5 mv 1.1
-iter  259  mean_ep_reward -2.250  train_wr 0.31  best_bench 0.67  kl 0.0136  ev +0.96  | hold 28% entH 1.52 conc 3.5 mv 1.1
-iter  260  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0136  ev +0.96 (early-stop @ep2)  | hold 25% entH 1.56 conc 3.6 mv 1.0
-iter  261  mean_ep_reward -3.750  train_wr 0.19  best_bench 0.67  kl 0.0104  ev +0.95  | hold 17% entH 1.84 conc 3.5 mv 1.1
+[baseline] bench vs teacher 0.67 [external:rl_v1 0.47  nearest_planet 0.87]  -> saved ppo2_best.pt, ppo2_best_external_rl_v1.pt, ppo2_best_nearest_planet.pt
+iter    0  mean_ep_reward +0.000  train_wr 0.50  best_bench 0.67  kl 0.0120  ev +0.96 (early-stop @ep1)  | hold 79% entH 0.50 conc 14.7 mv 0.5
+iter    1  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0090  ev +0.96 (early-stop @ep1)  | hold 77% entH 0.44 conc 13.6 mv 0.4
+iter    2  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.67  kl 0.0066  ev +0.96 (early-stop @ep1)  | hold 70% entH 0.64 conc 13.2 mv 0.5
+iter    3  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0076  ev +0.95 (early-stop @ep1)  | hold 81% entH 0.40 conc 14.4 mv 0.4
+iter    4  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0079  ev +0.95 (early-stop @ep1)  | hold 79% entH 0.44 conc 13.5 mv 0.3
+iter    5  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0107  ev +0.96 (early-stop @ep3)  | hold 84% entH 0.37 conc 14.7 mv 0.4
+iter    6  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0060  ev +0.96 (early-stop @ep2)  | hold 82% entH 0.38 conc 14.9 mv 0.3
+iter    7  mean_ep_reward +0.750  train_wr 0.56  bench 0.50 [external:rl_v1 0.47  nearest_planet 0.87]  best_bench 0.67  kl 0.0088  ev +0.96  | hold 80% entH 0.47 conc 14.6 mv 0.4
+iter    8  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0095  ev +0.95  | hold 82% entH 0.36 conc 14.7 mv 0.4
+iter    9  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0069  ev +0.96 (early-stop @ep3)  | hold 84% entH 0.39 conc 15.3 mv 0.4
+iter   10  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0067  ev +0.96 (early-stop @ep1)  | hold 81% entH 0.43 conc 15.0 mv 0.3
+iter   11  mean_ep_reward +0.749  train_wr 0.56  best_bench 0.67  kl 0.0076  ev +0.95 (early-stop @ep3)  | hold 79% entH 0.46 conc 14.7 mv 0.3
+iter   12  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0063  ev +0.94  | hold 86% entH 0.31 conc 15.1 mv 0.3
+iter   13  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0072  ev +0.96 (early-stop @ep2)  | hold 82% entH 0.39 conc 15.1 mv 0.3
+iter   14  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0068  ev +0.95  | hold 87% entH 0.32 conc 15.4 mv 0.3
+iter   15  mean_ep_reward +4.500  train_wr 0.88  bench 0.43 [external:rl_v1 0.43  nearest_planet 0.87]  best_bench 0.67  kl 0.0048  ev +0.95  | hold 90% entH 0.26 conc 15.7 mv 0.4
+iter   16  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0074  ev +0.97  | hold 76% entH 0.47 conc 14.4 mv 0.4
+iter   17  mean_ep_reward +1.499  train_wr 0.62  best_bench 0.67  kl 0.0048  ev +0.94  | hold 82% entH 0.43 conc 15.1 mv 0.4
+iter   18  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0098  ev +0.96  | hold 77% entH 0.52 conc 14.6 mv 0.4
+iter   19  mean_ep_reward -0.750  train_wr 0.44  best_bench 0.67  kl 0.0043  ev +0.96  | hold 80% entH 0.44 conc 14.3 mv 0.4
+iter   20  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0027  ev +0.96  | hold 85% entH 0.37 conc 15.4 mv 0.4
+iter   21  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0052  ev +0.96  | hold 84% entH 0.41 conc 15.1 mv 0.4
+iter   22  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0087  ev +0.97  | hold 81% entH 0.50 conc 15.4 mv 0.3
+iter   23  mean_ep_reward +0.750  train_wr 0.56  bench 0.57 [external:rl_v1 0.40  nearest_planet 0.87]  best_bench 0.67  kl 0.0065  ev +0.95  | hold 78% entH 0.50 conc 14.8 mv 0.3
+iter   24  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.67  kl 0.0030  ev +0.97  | hold 80% entH 0.44 conc 14.6 mv 0.4
+iter   25  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.67  kl 0.0070  ev +0.96  | hold 82% entH 0.43 conc 14.8 mv 0.3
+iter   26  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.67  kl 0.0023  ev +0.95 (early-stop @ep2)  | hold 89% entH 0.28 conc 15.4 mv 0.3
+iter   27  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.67  kl 0.0056  ev +0.95  | hold 86% entH 0.36 conc 15.3 mv 0.4
+iter   28  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0088  ev +0.97  | hold 79% entH 0.44 conc 14.8 mv 0.4
+iter   29  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0071  ev +0.96  | hold 81% entH 0.39 conc 14.5 mv 0.5
+iter   30  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0090  ev +0.97  | hold 78% entH 0.57 conc 15.0 mv 0.5
+iter   31  mean_ep_reward +3.750  train_wr 0.81  bench 0.60 [external:rl_v1 0.40  nearest_planet 0.93]  best_bench 0.67  kl 0.0097  ev +0.96  | hold 80% entH 0.45 conc 14.8 mv 0.5  *saved ppo2_best_nearest_planet.pt
+iter   32  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.67  kl 0.0095  ev +0.96  | hold 83% entH 0.40 conc 14.8 mv 0.5
+iter   33  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0050  ev +0.96  | hold 79% entH 0.50 conc 14.4 mv 0.5
+iter   34  mean_ep_reward +2.249  train_wr 0.69  best_bench 0.67  kl 0.0048  ev +0.95  | hold 79% entH 0.49 conc 14.2 mv 0.3
+iter   35  mean_ep_reward +3.749  train_wr 0.81  best_bench 0.67  kl 0.0035  ev +0.97  | hold 84% entH 0.41 conc 14.7 mv 0.4
+iter   36  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.67  kl 0.0060  ev +0.95  | hold 87% entH 0.36 conc 14.8 mv 0.5
+iter   37  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0027  ev +0.96  | hold 86% entH 0.34 conc 14.9 mv 0.4
+iter   38  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0080  ev +0.96  | hold 86% entH 0.35 conc 15.3 mv 0.5
+iter   39  mean_ep_reward +3.749  train_wr 0.81  bench 0.67 [external:rl_v1 0.43  nearest_planet 0.90]  best_bench 0.67  kl 0.0040  ev +0.97  | hold 82% entH 0.42 conc 14.8 mv 0.4
+iter   40  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0032  ev +0.96 (early-stop @ep1)  | hold 81% entH 0.40 conc 14.9 mv 0.5
+iter   41  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.67  kl 0.0089  ev +0.97  | hold 86% entH 0.35 conc 15.4 mv 0.5
+iter   42  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.67  kl 0.0031  ev +0.96  | hold 87% entH 0.33 conc 15.6 mv 0.4
+iter   43  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.67  kl 0.0030  ev +0.95  | hold 84% entH 0.39 conc 15.3 mv 0.5
+iter   44  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0042  ev +0.97  | hold 82% entH 0.43 conc 14.8 mv 0.5
+iter   45  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.67  kl 0.0057  ev +0.96  | hold 84% entH 0.41 conc 15.2 mv 0.6
+iter   46  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0080  ev +0.96  | hold 80% entH 0.49 conc 15.3 mv 0.6
+iter   47  mean_ep_reward +5.999  train_wr 1.00  bench 0.60 [external:rl_v1 0.53  nearest_planet 0.93]  best_bench 0.67  kl 0.0084  ev +0.88  | hold 88% entH 0.29 conc 15.9 mv 0.5  *saved ppo2_best_external_rl_v1.pt
+iter   48  mean_ep_reward +4.499  train_wr 0.88  best_bench 0.67  kl 0.0055  ev +0.97  | hold 82% entH 0.43 conc 15.3 mv 0.5
+iter   49  mean_ep_reward +5.999  train_wr 1.00  best_bench 0.67  kl 0.0024  ev +0.92  | hold 89% entH 0.30 conc 15.8 mv 0.5
+iter   50  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.67  kl 0.0053  ev +0.96  | hold 84% entH 0.40 conc 15.3 mv 0.5
+iter   51  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0129  ev +0.96  | hold 79% entH 0.47 conc 14.8 mv 0.4
+iter   52  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.67  kl 0.0073  ev +0.97  | hold 80% entH 0.46 conc 14.7 mv 0.5
+iter   53  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.67  kl 0.0033  ev +0.97  | hold 84% entH 0.39 conc 15.2 mv 0.5
+iter   54  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.67  kl 0.0036  ev +0.96  | hold 80% entH 0.45 conc 14.5 mv 0.4
+iter   55  mean_ep_reward +1.500  train_wr 0.62  bench 0.80 [external:rl_v1 0.63  nearest_planet 0.93]  best_bench 0.80  kl 0.0080  ev +0.96  | hold 78% entH 0.44 conc 14.1 mv 0.4  *saved ppo2_best.pt, ppo2_best_external_rl_v1.pt
+iter   56  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.80  kl 0.0052  ev +0.96  | hold 83% entH 0.36 conc 15.2 mv 0.4
+iter   57  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0060  ev +0.98  | hold 80% entH 0.37 conc 13.9 mv 0.4
+iter   58  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0016  ev +0.97  | hold 82% entH 0.41 conc 14.9 mv 0.5
+iter   59  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0053  ev +0.97  | hold 81% entH 0.49 conc 15.2 mv 0.5
+iter   60  mean_ep_reward +5.249  train_wr 0.94  best_bench 0.80  kl 0.0058  ev +0.96  | hold 82% entH 0.41 conc 15.4 mv 0.4
+iter   61  mean_ep_reward -1.500  train_wr 0.38  best_bench 0.80  kl 0.0076  ev +0.97  | hold 61% entH 0.82 conc 13.3 mv 0.5
+iter   62  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.80  kl 0.0080  ev +0.96  | hold 68% entH 0.67 conc 13.7 mv 0.5
+iter   63  mean_ep_reward +3.000  train_wr 0.75  bench 0.70 [external:rl_v1 0.53  nearest_planet 0.87]  best_bench 0.80  kl 0.0070  ev +0.96  | hold 74% entH 0.53 conc 14.4 mv 0.4
+iter   64  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0108  ev +0.97  | hold 71% entH 0.73 conc 14.6 mv 0.4
+iter   65  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0047  ev +0.98  | hold 80% entH 0.44 conc 15.4 mv 0.4
+iter   66  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0043  ev +0.97  | hold 73% entH 0.64 conc 14.5 mv 0.5
+iter   67  mean_ep_reward +0.750  train_wr 0.56  best_bench 0.80  kl 0.0052  ev +0.97 (early-stop @ep3)  | hold 66% entH 0.73 conc 13.8 mv 0.5
+iter   68  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0035  ev +0.96  | hold 69% entH 0.64 conc 13.9 mv 0.5
+iter   69  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.80  kl 0.0108  ev +0.97  | hold 77% entH 0.57 conc 15.0 mv 0.4
+iter   70  mean_ep_reward +2.999  train_wr 0.75  best_bench 0.80  kl 0.0070  ev +0.97  | hold 81% entH 0.46 conc 15.0 mv 0.4
+iter   71  mean_ep_reward +4.500  train_wr 0.88  bench 0.80 [external:rl_v1 0.63  nearest_planet 0.87]  best_bench 0.80  kl 0.0045  ev +0.97  | hold 83% entH 0.42 conc 15.4 mv 0.4
+iter   72  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.80  kl 0.0033  ev +0.97  | hold 87% entH 0.37 conc 15.7 mv 0.5
+iter   73  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0078  ev +0.97  | hold 74% entH 0.61 conc 14.8 mv 0.4
+iter   74  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0038  ev +0.97  | hold 73% entH 0.59 conc 14.3 mv 0.6
+iter   75  mean_ep_reward -0.000  train_wr 0.50  best_bench 0.80  kl 0.0079  ev +0.97  | hold 67% entH 0.77 conc 14.3 mv 0.6
+iter   76  mean_ep_reward +3.000  train_wr 0.75  best_bench 0.80  kl 0.0060  ev +0.96  | hold 79% entH 0.50 conc 15.4 mv 0.5
+iter   77  mean_ep_reward +4.500  train_wr 0.88  best_bench 0.80  kl 0.0044  ev +0.96  | hold 81% entH 0.42 conc 15.5 mv 0.5
+iter   78  mean_ep_reward +1.500  train_wr 0.62  best_bench 0.80  kl 0.0098  ev +0.97 (early-stop @ep3)  | hold 73% entH 0.53 conc 14.4 mv 0.5
+iter   79  mean_ep_reward +0.750  train_wr 0.56  bench 0.70 [external:rl_v1 0.67  nearest_planet 0.90]  best_bench 0.80  kl 0.0067  ev +0.97  | hold 71% entH 0.57 conc 14.1 mv 0.5  *saved ppo2_best_external_rl_v1.pt
+iter   80  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0095  ev +0.97  | hold 68% entH 0.70 conc 14.5 mv 0.6
+iter   81  mean_ep_reward +2.250  train_wr 0.69  best_bench 0.80  kl 0.0077  ev +0.96  | hold 72% entH 0.64 conc 14.5 mv 0.6
+iter   82  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0023  ev +0.97  | hold 75% entH 0.59 conc 14.8 mv 0.6
+iter   83  mean_ep_reward +3.750  train_wr 0.81  best_bench 0.80  kl 0.0079  ev +0.97  | hold 73% entH 0.54 conc 14.5 mv 0.5
