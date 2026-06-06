@@ -39,15 +39,27 @@ python -u ppo.py --players 2 --init bc2_best.pt --opponent self `
 if ($LASTEXITCODE -ne 0) { Write-Output "!! phase-1 failed (exit $LASTEXITCODE) - aborting"; exit 1 }
 
 # ---------- Stage 2/2: PPO phase-2 (full hard mix; INDEFINITE - stop with Ctrl-C) ----------
-# NOTE: ppo2_phase2_warmup.pt is reused if present, else built+cached on this first run.
+# STABILITY FIX (the old phase-2 self-destructed ~iter 100 in a self-play entropy
+# collapse): lr 1e-4 -> 5e-5, ent 0.003 -> 5e-4 (the constant entropy pressure that
+# inflated entH 0.3->1.8), and the mix is rebalanced toward FIXED anchors (~65%)
+# instead of 55% self-play league, so the collapse has nothing to feed on.
+#   + GAUNTLET LADDER: each time teacher bench clears --promote-threshold the agent
+#     snapshots itself to ppo2_gauntlet_<k>.pt, then keeps benchmarking AND sparring
+#     against that past strong self (own ppo2_best_gauntlet_<k>.pt) — a self-made
+#     curriculum so a long run keeps finding harder targets instead of saturating.
+#   + COLLAPSE GUARD: auto-stop if entropy/passivity runs away (best files preserved).
+# The phase-2 warmup cache was built under the OLD mix, so drop it (rebuilds fresh).
+Remove-Item ppo2_phase2_warmup.pt -ErrorAction SilentlyContinue
 Write-Output "=== [2/2] $(Get-Date -Format u)  PPO phase-2 2p (full mix; runs until Ctrl-C) ==="
 python -u ppo.py --players 2 --init ppo2_phase1_best.pt --opponent self `
   --league-size 12 --league-add-every 20 `
-  --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.003 --episodes_per_iter 16 `
+  --vf-coef 0.5 --lr 5e-5 --target-kl 0.04 --ent 5e-4 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-games 12 --warmup-cache ppo2_phase2_warmup.pt `
-  --mix-teacher 0.15 `
+  --mix-teacher 0.20 --mix-weak 0.10 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 --mix-scripted comet_user:0.05 `
-  --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.15 `
+  --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.20 `
+  --mix-gauntlet 0.15 --promote-threshold 0.85 --promote-every 3 --gauntlet-max 8 `
+  --collapse-entH 1.1 --collapse-hold 0.40 --collapse-patience 15 `
   --eval-every 8 --eval-games 30 --workers 8 `
   --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
   --iters 100000 --out ppo2.pt |

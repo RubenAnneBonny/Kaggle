@@ -72,6 +72,11 @@ def _resolve_opp(spec, externals):
     import ow_base
     if spec.startswith("external:"):
         return externals[spec[len("external:"):]]
+    if spec.startswith("ckpt:"):
+        # A frozen checkpoint (e.g. a promoted gauntlet rung). Load it once per
+        # worker chunk and play it greedily — same as a scripted opponent.
+        from ppo import _load_frozen, net_greedy_agent
+        return net_greedy_agent(_load_frozen(spec[len("ckpt:"):], "cpu"), "cpu")
     if spec == "teacher":    return ow_base.net_roi_support
     if spec == "aggressive": return ow_base.net_roi_aggressive
     return getattr(ow_base, spec)
@@ -113,24 +118,28 @@ def eval_winrate(net, spec, ext_paths, games, num_players, eval_off):
 def _collect_worker(payload):
     from ppo import collect_batched, make_opp_draw
     from ow_env import OrbitEnv
-    sd, league_sds, mix_weights, ext_paths, seeds, num_players, max_steps = payload
+    sd, league_sds, gaunt_sds, mix_weights, ext_paths, seeds, num_players, max_steps = payload
     net = _build_net(sd)
     league = [_build_net(s) for s in league_sds] or [net]
-    opp_draw = make_opp_draw(mix_weights, league, _load_externals(ext_paths), "cpu")
+    gauntlet = [_build_net(s) for s in gaunt_sds]
+    opp_draw = make_opp_draw(mix_weights, league, _load_externals(ext_paths), "cpu", gauntlet)
     envs = [OrbitEnv(max_steps=max_steps, num_players=num_players, focal=0) for _ in seeds]
     results = collect_batched(net, opp_draw, envs, seeds, "cpu")
     wins = [1 if envs[j]._terminal_reward(0) > 0 else 0 for j in range(len(envs))]
     return results, wins
 
 
-def collect(net, self_pool, mix_weights, ext_paths, seeds, num_players, max_steps):
+def collect(net, self_pool, mix_weights, ext_paths, seeds, num_players, max_steps,
+            gauntlet_pool=None):
     """Parallel collection across workers. Returns (results, wins) in seed order;
-    results[i] = (traj, adv, ret, dbg) with NumPy caches, wins[i] = win flag."""
+    results[i] = (traj, adv, ret, dbg) with NumPy caches, wins[i] = win flag.
+    gauntlet_pool: promoted frozen snapshots drawn by the 'gauntlet' mix key."""
     sd = _cpu_sd(net.state_dict())
     league_sds = [_cpu_sd(n.state_dict()) for n in self_pool]
+    gaunt_sds = [_cpu_sd(n.state_dict()) for n in (gauntlet_pool or [])]
     idx_chunks = [list(range(len(seeds)))[w::_NWORKERS] for w in range(_NWORKERS)]
     idx_chunks = [ch for ch in idx_chunks if ch]
-    payloads = [(sd, league_sds, mix_weights, ext_paths, [seeds[i] for i in ch],
+    payloads = [(sd, league_sds, gaunt_sds, mix_weights, ext_paths, [seeds[i] for i in ch],
                  num_players, max_steps) for ch in idx_chunks]
     parts = _POOL.map(_collect_worker, payloads)
     results = [None] * len(seeds)

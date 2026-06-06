@@ -134,9 +134,25 @@ Each does three stages, logging live to per-stage `.log` files:
    runs `--ent 0.0` (warm-started from BC, it needs no exploration bonus) at the
    stable `--lr 3e-5 --vf-coef 0.25`, keeping league ≈ 0.4 (most weight near-skill,
    per the opponent-mix philosophy below).
-3. **PPO phase-2** — the full hard mix (teacher / rl_v1 / league), warm-started
-   from phase-1's best, running **indefinitely** until you `Ctrl-C`. Saves
-   `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
+3. **PPO phase-2** — the full hard mix (teacher / rl_v1 / weak / scripts / league),
+   warm-started from phase-1's best, running **indefinitely** until you `Ctrl-C`.
+   Saves `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
+   Phase-2 runs the same low-entropy, anchor-heavy regime as phase-1 — `--ent 5e-4`
+   (a whisper of exploration, **not** the `0.003` that caused the collapse below),
+   `--lr 5e-5`, and ≈ 65 % weight on **fixed** anchors (teacher/weak/scripts/rl_v1)
+   so the self-play league (≈ 20–35 %) can't run away. It also enables the **gauntlet
+   ladder** and the **collapse guard** (both documented below).
+
+   > **Phase-2 self-play collapse (what we fixed).** The original phase-2 used
+   > `--ent 0.003 --lr 1e-4` with a **55 %** self-play league. It climbed to teacher
+   > 0.67 by ~iter 87, then slowly self-destructed: `entH` 0.3→1.8, `hold%` 84→17,
+   > `conc` 15→3.5, and **every** benchmark (incl. the easy `nearest_planet`, 0.93→0.53)
+   > decayed in lockstep while `ev` stayed +0.96. The mechanism: the per-step entropy
+   > bonus is a constant one-directional push toward dispersion; with normalized
+   > advantages and a league dominated by the agent's own (increasingly chaotic)
+   > snapshots, the task gradient that would punish dispersion weakened until the
+   > entropy term won — a runaway. The fix is the regime above: tiny `--ent`, lower
+   > `--lr`, more fixed anchors, plus the collapse guard as a backstop.
 
 `run_2p_resume.ps1` is the same pipeline **minus BC**: it warm-starts phase-1
 from an existing `bc2_best.pt`. Use it to re-launch the PPO phases — e.g. after an
@@ -285,6 +301,40 @@ bracketed extras each drive their own `_best_<name>` file: rl_v1 = "am I beating
 my own prior submission yet?", nearest = "am I still trivially handling weak
 opponents, or did self-play break the basics?". `*saved ...` lists which best
 files were written this tick.
+
+**Self-improving gauntlet ladder (`--promote-threshold`).** A fixed scripted
+benchmark caps out: once you reliably beat the teacher there's no harder target,
+and a long run just saturates. The ladder turns the agent's own milestones into
+that escalating target. When the **primary** benchmark clears `--promote-threshold`
+(e.g. teacher ≥ 0.85), at most once every `--promote-every` eval ticks, the agent:
+
+- snapshots itself to `ppoN_gauntlet_<k>.pt` (a permanent frozen rung),
+- adds that rung as a **benchmark** it must keep beating — it gets its own
+  `ppoN_best_gauntlet_<k>.pt` exactly like a `--bench-also` opponent, and
+- folds the rung into the **training mix** via `--mix-gauntlet` (weight carved
+  from the league share, spread uniformly over the live rungs) so it keeps
+  sparring its past strong selves — an AlphaStar-style league of main-agents.
+
+`--gauntlet-max N` caps how many of the most-recent rungs stay in the mix **and**
+get benchmarked (older `.pt` files persist on disk, just no longer re-played, so
+eval cost stays bounded). A promotion logs `[promote] teacher bench 0.88 >= 0.85
+-> rung 3 saved ppo2_gauntlet_3.pt; 3 rung(s) in mix`, and later eval ticks show
+the rungs in the bracket: `bench 0.91 [external:rl_v1 0.6  nearest_planet 0.95
+gauntlet_1 0.88  gauntlet_2 0.71]`. Set `--promote-threshold 0` (default) to
+disable. Note the rungs are gated on an **absolute** bar vs the scripted teacher;
+if a run never reaches it, lower the threshold so the ladder actually engages.
+**Your strongest model** at any time is the latest `ppoN_best_gauntlet_<k>.pt`
+(it beats the hardest milestone) or the most recent `ppoN_itXXXX.pt`.
+
+**Collapse guard (`--collapse-patience`).** A backstop for the runaway documented
+in phase-2 above: if mean `entH` stays `>= --collapse-entH` or `hold%` stays
+`<= --collapse-hold` for `--collapse-patience` consecutive iters, the run stops
+(`[collapse-guard] ...`). Healthy is `entH ≈ 0.3–0.5` / `hold ≈ 0.8`; the run that
+collapsed crossed `entH 1.1` and `hold 0.40` and stayed there, so the pipeline
+defaults (`--collapse-entH 1.1 --collapse-hold 0.40 --collapse-patience 15`) abort
+~80 iters before the deep collapse without false-triggering on transient dips. All
+`_best*` files are gated on improvement, so they're preserved regardless. Set
+`--collapse-patience 0` (default) to disable.
 
 `ev` is the value head's **explained variance** on the iter's collected states —
 the single most diagnostic PPO health number. `ev ≤ 0` means the value baseline

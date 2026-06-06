@@ -362,11 +362,14 @@ def build_opponent(spec, self_pool, dev):
     return Opponent("fn", fn=getattr(ow_base, spec), dev=dev), False
 
 
-def make_opp_draw(mix_weights, self_pool, externals, dev):
+def make_opp_draw(mix_weights, self_pool, externals, dev, gauntlet_pool=None):
     """Build the per-episode opponent sampler from a mix-weight dict, the live
     self-play league, and a name->callable externals map. Module-level (not a
     closure) so collection workers can reconstruct the exact same draw from a
-    league of frozen nets they rebuilt from state-dicts (see parallel.py)."""
+    league of frozen nets they rebuilt from state-dicts (see parallel.py).
+    gauntlet_pool: promoted frozen snapshots drawn (uniformly) by the 'gauntlet'
+    key — past strong selves that the agent keeps sparring against."""
+    gauntlet_pool = gauntlet_pool or []
     kinds = list(mix_weights.keys())
     probs = np.array([mix_weights[k] for k in kinds], dtype=np.float64)
     probs = probs / probs.sum()
@@ -380,6 +383,9 @@ def make_opp_draw(mix_weights, self_pool, externals, dev):
             return Opponent("fn", fn=getattr(ow_base, k[7:]), dev=dev)
         if k.startswith("ext:"):
             return Opponent("fn", fn=externals[k[4:]], dev=dev)
+        if k == "gauntlet":
+            pick = gauntlet_pool[np.random.randint(len(gauntlet_pool))]
+            return Opponent("net", nets=[pick], dev=dev)
         net_pick = self_pool[np.random.randint(len(self_pool))]
         return Opponent("net", nets=[net_pick], dev=dev)
     return draw
@@ -518,6 +524,33 @@ def main():
                          "so the no-improvement window is patience*eval-every iters. Used to "
                          "auto-end phase-1 once it has plateaued — it only needs to be 'good "
                          "enough' to seed phase-2.")
+    # --- self-improving gauntlet ladder ----------------------------------- #
+    # When the agent beats the PRIMARY benchmark at/above --promote-threshold, it
+    # snapshots itself to <out>_gauntlet_<k>.pt and (a) adds that snapshot as a
+    # fixed benchmark it must keep beating (own _best_gauntlet_<k>.pt) and (b) folds
+    # it into the training mix (--mix-gauntlet weight, taken from the league share)
+    # so it keeps sparring past strong selves. This is what lets a long run keep
+    # finding harder targets instead of saturating once the scripted teacher falls.
+    ap.add_argument("--promote-threshold", type=float, default=0.0, dest="promote_threshold",
+                    help="primary-benchmark win-rate that triggers a gauntlet promotion "
+                         "(0 disables the ladder; e.g. 0.92)")
+    ap.add_argument("--promote-every", type=int, default=3, dest="promote_every",
+                    help="min EVAL TICKS between promotions (rate-limit so rungs aren't near-dupes)")
+    ap.add_argument("--mix-gauntlet", type=float, default=0.0, dest="mix_gauntlet",
+                    help="training-mix weight spread (uniformly) over promoted rungs; "
+                         "drawn from the league share, applied once any rung exists")
+    ap.add_argument("--gauntlet-max", type=int, default=8, dest="gauntlet_max",
+                    help="cap on rungs kept in the training mix AND benchmarked (most-recent "
+                         "kept; older .pt files persist on disk). 0 = unlimited")
+    # --- collapse guard (auto-stop on entropy/passivity runaway) ----------- #
+    ap.add_argument("--collapse-entH", type=float, default=0.0, dest="collapse_entH",
+                    help="stop if mean target entropy stays >= this for --collapse-patience iters "
+                         "(0 disables; healthy ~0.3-0.5, collapse >1.0)")
+    ap.add_argument("--collapse-hold", type=float, default=-1.0, dest="collapse_hold",
+                    help="stop if mean hold-fraction stays <= this for --collapse-patience iters "
+                         "(<0 disables; healthy ~0.8, collapse <0.4)")
+    ap.add_argument("--collapse-patience", type=int, default=0, dest="collapse_patience",
+                    help="consecutive iters past a collapse threshold before stopping (0 disables)")
     ap.add_argument("--save-every", type=int, default=25, dest="save_every")
     ap.add_argument("--log-every", type=int, default=1, dest="log_every")
     ap.add_argument("--workers", type=int, default=1,
@@ -564,6 +597,8 @@ def main():
     def _resolve_eval_opp(name):
         if name.startswith("external:"):
             return externals[name[len("external:"):]]
+        if name.startswith("ckpt:"):
+            return net_greedy_agent(_load_frozen(name[len("ckpt:"):], dev), dev)
         if name == "teacher":     return ow_base.net_roi_support
         if name == "aggressive":  return ow_base.net_roi_aggressive
         return getattr(ow_base, name)
@@ -595,19 +630,37 @@ def main():
     # Promote to per-episode draw path whenever the league has >1 snapshot so the
     # opponent identity stays coherent within a game (back-compat single-opp would
     # resample every step).
-    mix_active = explicit_sum > 0.0 or (args.league_size > 1 and refreshable)
+    mix_active = explicit_sum > 0.0 or args.mix_gauntlet > 0.0 \
+        or (args.league_size > 1 and refreshable)
 
-    opp_draw = make_opp_draw(mix_weights, self_pool, externals, dev) if mix_active else (lambda: opp)
+    # Promoted-rung state for the gauntlet ladder (populated at eval ticks).
+    gauntlet_pool = []        # frozen snapshots fed to the training mix (most-recent kept)
+    gauntlet_rungs = []       # [{"name","path"}] for every promotion (benchmarks use recent)
+    n_promoted = 0
+
+    def _effective_mix():
+        """Base mix, plus a 'gauntlet' share carved out of the league once any rung
+        exists (so the reserved weight isn't wasted while the pool is empty)."""
+        if args.mix_gauntlet > 0 and gauntlet_pool:
+            m = dict(mix_weights)
+            g = min(args.mix_gauntlet, m["league"])
+            m["league"] = m["league"] - g
+            m["gauntlet"] = g
+            return m
+        return mix_weights
 
     def _collect(seeds):
         """Collect len(seeds) games -> (results, win_flags) in seed order. Parallel
         across CPU workers when --workers>1, else in-process on the GPU via
         collect_batched. Both yield identical result/cache structure."""
+        eff = _effective_mix()
         if use_mp:
-            return parallel.collect(net, self_pool, mix_weights, ext_paths, seeds,
-                                    args.players, args.max_steps)
+            return parallel.collect(net, self_pool, eff, ext_paths, seeds,
+                                    args.players, args.max_steps, gauntlet_pool=gauntlet_pool)
+        draw = (make_opp_draw(eff, self_pool, externals, dev, gauntlet_pool)
+                if mix_active else (lambda: opp))
         envs = train_envs[:len(seeds)]
-        results = collect_batched(net, opp_draw, envs, seeds, dev)
+        results = collect_batched(net, draw, envs, seeds, dev)
         wins = [1 if envs[j]._terminal_reward(0) > 0 else 0 for j in range(len(envs))]
         return results, wins
 
@@ -627,6 +680,14 @@ def main():
     if args.bench_also:
         print(f"  also benchmarking vs: {', '.join(args.bench_also)} "
               f"({args.eval_games} games each per eval tick — each keeps its own _best_<name>)")
+    if args.promote_threshold > 0:
+        print(f"  gauntlet: promote a snapshot when {args.eval_opponent} bench >= "
+              f"{args.promote_threshold:.2f} (>= {args.promote_every} ticks apart); "
+              f"mix_gauntlet={args.mix_gauntlet} keep={args.gauntlet_max or 'all'} "
+              f"-> _gauntlet_<k>.pt + _best_gauntlet_<k>.pt")
+    if args.collapse_patience > 0:
+        print(f"  collapse-guard: stop after {args.collapse_patience} iters with "
+              f"entH>={args.collapse_entH or '-'} or hold<={args.collapse_hold if args.collapse_hold>=0 else '-'}")
 
     def _suffix(tag):
         return (args.out.replace(".pt", f"_{tag}.pt") if args.out.endswith(".pt")
@@ -637,8 +698,19 @@ def main():
     # --bench-also opponent saves to _best_<name>. Each file is updated
     # independently per eval tick, so beating several opponents at once saves
     # several bests in the same tick.
-    bench_targets = [(args.eval_opponent, eval_opp_fn, True)]
-    bench_targets += [(spec, fn, False) for spec, fn in bench_also]
+    # Each target is (display_name, eval_spec, eval_fn, is_primary): eval_spec is
+    # the string handed to the parallel worker (incl. "ckpt:<path>" for gauntlet
+    # rungs); eval_fn is the in-process callable; display_name keys best_wr / files.
+    def _rebuild_bench_targets():
+        bt = [(args.eval_opponent, args.eval_opponent, eval_opp_fn, True)]
+        bt += [(spec, spec, fn, False) for spec, fn in bench_also]
+        recent = gauntlet_rungs[-args.gauntlet_max:] if args.gauntlet_max > 0 else gauntlet_rungs
+        for r in recent:
+            cspec = "ckpt:" + r["path"]
+            bt.append((r["name"], cspec, _resolve_eval_opp(cspec), False))
+        return bt
+
+    bench_targets = _rebuild_bench_targets()
     best_wr = {}        # opponent display name -> best benchmark win-rate so far
 
     def _best_path(name, primary):
@@ -651,25 +723,28 @@ def main():
         """Benchmark net vs every target; save that opponent's own _best whenever
         it improves. Returns (primary_wr, [(name, wr) extras], [saved filenames])."""
         primary_wr, extras, saved = None, [], []
-        for name, fn, primary in bench_targets:
+        for disp, spec, fn, primary in bench_targets:
             if use_mp:
-                wr = parallel.eval_winrate(net, name, ext_paths, args.eval_games,
+                wr = parallel.eval_winrate(net, spec, ext_paths, args.eval_games,
                                            args.players, args.eval_off)
             else:
                 wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
-            if wr > best_wr.get(name, -1.0):
-                best_wr[name] = wr
-                path = _best_path(name, primary)
+            if wr > best_wr.get(disp, -1.0):
+                best_wr[disp] = wr
+                path = _best_path(disp, primary)
                 torch.save({"model": net.state_dict(), "opt": opt.state_dict(),
                             "players": args.players}, path)
                 saved.append(os.path.basename(path))
-            (extras.append((name, wr)) if not primary else None)
+            (extras.append((disp, wr)) if not primary else None)
             if primary:
                 primary_wr = wr
         return primary_wr, extras, saved
 
     seed_i = args.train_off
     no_improve_ticks = 0          # eval ticks since the primary bench last set a new best
+    eval_tick = 0                 # count of eval ticks (gates gauntlet promotion cadence)
+    last_promote_tick = -10**9    # eval_tick of the most recent promotion
+    collapse_run = 0              # consecutive iters past a collapse threshold
 
     # ===== one-shot value warmup (optionally cached to disk for reuse) =====
     # The warmup-calibrated value head depends ONLY on the init policy and the
@@ -762,6 +837,13 @@ def main():
         # if it stays pinned at <=0 the reward/return is the problem, not the hp.
         _r = np.array(iter_ret); _v = np.array(iter_val)
         ev = float(1.0 - np.var(_r - _v) / (np.var(_r) + 1e-9))
+        # Collapse diagnostics (computed every iter so the guard can watch them):
+        # hold% falling -> passive play; entH (target entropy) rising -> the policy
+        # is dispersing; conc (Beta alpha+beta); mv = decoded moves/turn.
+        hold = np.mean([d["hold_frac"] for d in dbgs])
+        entc = np.mean([d["ent_cat"] for d in dbgs])
+        conc = np.mean([d["conc"] for d in dbgs])
+        mv = np.mean([d["n_moves"] for d in dbgs])
         all_adv = np.array([b[1] for b in batch], dtype=np.float64)
         amean, astd = all_adv.mean(), all_adv.std() + 1e-6
         for b in batch:
@@ -830,6 +912,25 @@ def main():
             if args.early_stop_patience > 0 and no_improve_ticks >= args.early_stop_patience:
                 early_stop_now = True
 
+            # ---- gauntlet promotion: snapshot a new rung once we clear the bar ----
+            eval_tick += 1
+            if (args.promote_threshold > 0 and bench is not None
+                    and bench >= args.promote_threshold
+                    and (eval_tick - last_promote_tick) >= args.promote_every):
+                n_promoted += 1
+                gp = _suffix(f"gauntlet_{n_promoted}")
+                torch.save({"model": net.state_dict(), "players": args.players}, gp)
+                gauntlet_pool.append(_snapshot(net, dev))
+                if args.gauntlet_max > 0:
+                    while len(gauntlet_pool) > args.gauntlet_max:
+                        gauntlet_pool.pop(0)        # keep most-recent in the training mix
+                gauntlet_rungs.append({"name": f"gauntlet_{n_promoted}", "path": gp})
+                bench_targets = _rebuild_bench_targets()   # benchmark the new rung from now on
+                last_promote_tick = eval_tick
+                print(f"[promote] {args.eval_opponent} bench {bench:.2f} >= "
+                      f"{args.promote_threshold:.2f} -> rung {n_promoted} saved "
+                      f"{os.path.basename(gp)}; {len(gauntlet_pool)} rung(s) in mix")
+
         if it % args.log_every == 0:
             wr = wins / args.episodes_per_iter
             bs = ""
@@ -839,13 +940,6 @@ def main():
                     bs += " [" + "  ".join(f"{n} {w:.2f}" for n, w in bench_extras) + "]"
             sel_wr = best_wr.get(args.eval_opponent, -1.0)
             sel = f"best_bench {sel_wr:.2f}" if sel_wr >= 0 else "best_bench --"
-            # collapse diagnostics: hold% rising -> passivity; ent_cat -> 0 means the
-            # target argmax sharpened (mode collapse); conc (Beta alpha+beta) rising
-            # means the fraction head is going deterministic; mv = decoded moves/turn.
-            hold = np.mean([d["hold_frac"] for d in dbgs])
-            entc = np.mean([d["ent_cat"] for d in dbgs])
-            conc = np.mean([d["conc"] for d in dbgs])
-            mv = np.mean([d["n_moves"] for d in dbgs])
             line = (f"iter {it:4d}  mean_ep_reward {np.mean(ep_rewards):+.3f}  train_wr {wr:.2f}"
                     f"{bs}  {sel}  kl {mean_kl:.4f}  ev {ev:+.2f}"
                     f"{'' if stopped_epoch == args.epochs else f' (early-stop @ep{stopped_epoch})'}"
@@ -864,6 +958,17 @@ def main():
                   f"best {best_wr.get(args.eval_opponent, -1.0):.2f}; stopping at iter {it} "
                   f"-> phase-1 done, seeding phase-2")
             break
+
+        # ---- collapse guard: abort a runaway entropy/passivity spiral early ----
+        if args.collapse_patience > 0:
+            bad = ((args.collapse_entH > 0 and entc >= args.collapse_entH)
+                   or (args.collapse_hold >= 0 and hold <= args.collapse_hold))
+            collapse_run = collapse_run + 1 if bad else 0
+            if collapse_run >= args.collapse_patience:
+                print(f"[collapse-guard] entH {entc:.2f} / hold {hold:.0%} past thresholds for "
+                      f"{collapse_run} iters -> stopping at iter {it} "
+                      f"(best checkpoints preserved: {os.path.basename(_suffix('best'))} etc.)")
+                break
 
     torch.save({"model": net.state_dict(), "players": args.players}, args.out)
     print("saved", args.out)
