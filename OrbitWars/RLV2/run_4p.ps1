@@ -18,7 +18,7 @@ Remove-Item ppo4_phase1_warmup.pt -ErrorAction SilentlyContinue
 Write-Output "=== [2/3] $(Get-Date -Format u)  PPO phase-1 4p (auto-stop on plateau) ==="
 python -u ppo.py --players 4 --init bc4_best.pt --opponent self `
   --league-size 8 --league-add-every 10 `
-  --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.05 --episodes_per_iter 16 `
+  --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.01 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-cache ppo4_phase1_warmup.pt `
   --mix-scripted nearest_planet_smart:0.20 --mix-scripted comet_user:0.20 `
   --eval-every 3 --eval-games 40 `
@@ -32,7 +32,7 @@ Remove-Item ppo4_phase2_warmup.pt -ErrorAction SilentlyContinue
 Write-Output "=== [3/3] $(Get-Date -Format u)  PPO phase-2 4p (full mix; runs until Ctrl-C) ==="
 python -u ppo.py --players 4 --init ppo4_phase1_best.pt --opponent self `
   --league-size 16 --league-add-every 20 `
-  --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.03 --episodes_per_iter 16 `
+  --vf-coef 0.25 --lr 1e-4 --target-kl 0.05 --ent 0.01 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-cache ppo4_phase2_warmup.pt `
   --mix-teacher 0.12 --mix-aggressive 0.08 --mix-weak 0.05 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 --mix-scripted comet_user:0.05 `

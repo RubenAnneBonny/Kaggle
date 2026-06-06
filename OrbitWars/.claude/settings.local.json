@@ -26,7 +26,24 @@
       "PowerShell(Remove-Item *)",
       "PowerShell(Set-Location C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RLV2; $py=\"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\.venv\\\\Scripts\\\\python.exe\"; $env:PYTHONUNBUFFERED=\"1\"; & $py -c \"import bc, numpy as np; a=bc.harvest\\(8,2,0,1\\); b=bc.harvest\\(8,2,0,4\\); import sys; print\\('seq states', a[0].shape[0], '| par states', b[0].shape[0]\\); print\\('same set:', a[0].shape[0]==b[0].shape[0] and np.allclose\\(np.sort\\(a[3].reshape\\(a[3].shape[0],-1\\).sum\\(1\\)\\), np.sort\\(b[3].reshape\\(b[3].shape[0],-1\\).sum\\(1\\)\\)\\)\\)\" 2>&1 | Select-String -Pattern \"states|same set\")",
       "PowerShell(Set-Location C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RLV2; $py=\"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\.venv\\\\Scripts\\\\python.exe\"; $out = & $py -c \"import bc; print\\('IMPORT_OK'\\)\" 2>&1; $count = \\($out | Measure-Object -Line\\).Lines; Write-Output \"total output lines: $count\"; $out | Select-Object -First 20)",
-      "PowerShell(Set-Location C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RLV2; $py=\"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\.venv\\\\Scripts\\\\python.exe\"; $o = & $py -c \"import importlib; [importlib.import_module\\(m\\) for m in ['quiet_kaggle','ow_env','replay','submit_agent']]; print\\('ALL_IMPORT_OK'\\)\" 2>&1; Write-Output \"lines: $\\(\\($o | Measure-Object -Line\\).Lines\\)\"; $o | Select-Object -Last 3)"
+      "PowerShell(Set-Location C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\RLV2; $py=\"C:\\\\Users\\\\ruben\\\\Kaggle\\\\OrbitWars\\\\.venv\\\\Scripts\\\\python.exe\"; $o = & $py -c \"import importlib; [importlib.import_module\\(m\\) for m in ['quiet_kaggle','ow_env','replay','submit_agent']]; print\\('ALL_IMPORT_OK'\\)\" 2>&1; Write-Output \"lines: $\\(\\($o | Measure-Object -Line\\).Lines\\)\"; $o | Select-Object -Last 3)",
+      "Bash(../.venv/Scripts/python.exe diag.py --init bc2_best.pt --episodes 12 --bench-games 20)",
+      "Bash(rm -f ppo2_phase1_warmup.pt ppo2_warmup.pt ppo2_phase2_warmup.pt)",
+      "Bash(ls *warmup*.pt)",
+      "Bash(../.venv/Scripts/python.exe diag.py --init bc2_best.pt --episodes 16 --refit-epochs 40 --bench-games 12)",
+      "Bash(../.venv/Scripts/python.exe -c \"import ow_env, importlib; importlib.reload\\(ow_env\\)\")",
+      "Bash(../.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('diag.py'\\).read\\(\\)\\); print\\('diag.py OK'\\)\")",
+      "Bash(../.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); print\\('ppo.py OK'\\)\")",
+      "Bash(../.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); print\\('ppo.py syntax OK'\\)\")",
+      "Bash(../.venv/Scripts/python.exe test_batched.py --init bc2_best.pt)",
+      "Bash(../.venv/Scripts/python.exe bench_collect.py --init bc2_best.pt)",
+      "Bash(git commit -m '@ *)",
+      "Bash(git commit *)",
+      "Bash(../.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('ppo.py'\\).read\\(\\)\\); ast.parse\\(open\\('parallel.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(../.venv/Scripts/python.exe test_parallel.py --init bc2_best.pt --workers 4 --games 16)",
+      "Bash(rm -f test_mp_warmup.pt test_mp.pt)",
+      "Bash(time ../.venv/Scripts/python.exe -u ppo.py --players 2 --init bc2_best.pt --opponent self --league-size 8 --league-add-every 10 --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.03 --episodes_per_iter 16 --warmup-games 6 --value-warmup 4 --warmup-cache test_mp_warmup.pt --mix-scripted nearest_planet_smart:0.30 --mix-scripted comet_user:0.30 --eval-every 2 --eval-games 20 --eval-opponent nearest_planet --bench-also teacher --workers 0 --iters 4 --save-every 0 --out test_mp.pt)",
+      "Bash(../.venv/Scripts/python.exe -c \"import ppo, parallel; print\\('imports OK'\\); print\\('has _collect path + parallel wired:', hasattr\\(parallel,'eval_winrate'\\), hasattr\\(parallel,'collect'\\)\\)\")"
     ]
   }
 }

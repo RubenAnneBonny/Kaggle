@@ -29,9 +29,9 @@ Remove-Item ppo2_phase1_warmup.pt -ErrorAction SilentlyContinue
 Write-Output "=== [1/2] $(Get-Date -Format u)  PPO phase-1 2p (resume; reuse warmup; auto-stop on plateau) ==="
 python -u ppo.py --players 2 --init bc2_best.pt --opponent self `
   --league-size 8 --league-add-every 10 `
-  --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.03 --episodes_per_iter 16 `
+  --vf-coef 0.25 --lr 3e-5 --target-kl 0.05 --ent 0.0 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-games 12 --warmup-cache ppo2_phase1_warmup.pt `
-  --mix-scripted nearest_planet_smart:0.30 --mix-scripted comet_user:0.30 `
+  --mix-weak 0.30 --mix-scripted nearest_planet_smart:0.15 --mix-scripted comet_user:0.15 `
   --eval-every 5 --eval-games 30 --workers 8 `
   --eval-opponent nearest_planet `
   --early-stop-patience 8 --iters 400 --out ppo2_phase1.pt |
@@ -43,7 +43,7 @@ if ($LASTEXITCODE -ne 0) { Write-Output "!! phase-1 failed (exit $LASTEXITCODE) 
 Write-Output "=== [2/2] $(Get-Date -Format u)  PPO phase-2 2p (full mix; runs until Ctrl-C) ==="
 python -u ppo.py --players 2 --init ppo2_phase1_best.pt --opponent self `
   --league-size 12 --league-add-every 20 `
-  --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.02 --episodes_per_iter 16 `
+  --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.003 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-games 12 --warmup-cache ppo2_phase2_warmup.pt `
   --mix-teacher 0.15 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 --mix-scripted comet_user:0.05 `

@@ -123,7 +123,17 @@ Each does three stages, logging live to per-stage `.log` files:
 2. **PPO phase-1** — weak/self **curriculum** to lift the warm-start off the
    floor; **auto-stops** when the `nearest` benchmark plateaus
    (`--early-stop-patience`), since phase-1 only needs to be "good enough" to
-   seed phase-2. Saves `ppoN_phase1_best.pt`.
+   seed phase-2. Saves `ppoN_phase1_best.pt`. The mix must include a genuinely
+   **winnable** opponent — `--mix-weak 0.30` (plain `nearest_planet`, the eval
+   family; disjoint seeds, so no leak) — so the focal actually wins a fair share
+   and the normalized advantages carry signal. Without one (the old mix was
+   `nearest_planet_smart:0.30 + comet_user:0.30 + league`, all of which a
+   20%-competent warm-start loses to) the policy gradient is zero-mean noise and
+   the entropy bonus becomes the only coherent gradient: `entH` climbs, `hold%`
+   and `conc` fall, `bench` decays — the monotone-collapse tell. Phase-1 therefore
+   runs `--ent 0.0` (warm-started from BC, it needs no exploration bonus) at the
+   stable `--lr 3e-5 --vf-coef 0.25`, keeping league ≈ 0.4 (most weight near-skill,
+   per the opponent-mix philosophy below).
 3. **PPO phase-2** — the full hard mix (teacher / rl_v1 / league), warm-started
    from phase-1's best, running **indefinitely** until you `Ctrl-C`. Saves
    `ppoN_best.pt` (the submit target) whenever the teacher benchmark improves.
@@ -449,7 +459,12 @@ python ppo.py --players 2 --init bc2_best.pt --opponent self --refresh 20 --iter
   loss). It is therefore board-size independent: `0.01` means the same exploration
   pressure whether the player owns 3 planets or 30. See the lessons note below —
   before the normalization fix this term was a raw *sum*, so the effective weight
-  was `ent × n_own` and even `0.01` quietly behaved like ~`0.1`.
+  was `ent × n_own` and even `0.01` quietly behaved like ~`0.1`. Even normalized,
+  a non-trivial `--ent` will randomize the policy whenever the advantage signal is
+  weak (it's then the only coherent gradient). The pipeline runs phase-1 at
+  `--ent 0.0` (warm-started from BC, no exploration needed; the winnable
+  `--mix-weak` supplies the gradient) and phase-2 at a small `--ent 0.003` floor
+  (a long, diverse run where a touch of entropy guards against premature collapse).
 
 ## Hard-won lessons
 
