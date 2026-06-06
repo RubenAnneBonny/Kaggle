@@ -32,7 +32,7 @@ python -u ppo.py --players 2 --init bc2_best.pt --opponent self `
   --vf-coef 0.5 --lr 1e-4 --target-kl 0.05 --ent 0.03 --episodes_per_iter 16 `
   --warmup-lr 1e-3 --warmup-games 12 --warmup-cache ppo2_phase1_warmup.pt `
   --mix-scripted nearest_planet_smart:0.30 --mix-scripted comet_user:0.30 `
-  --eval-every 5 --eval-games 30 `
+  --eval-every 5 --eval-games 30 --workers 8 `
   --eval-opponent nearest_planet `
   --early-stop-patience 8 --iters 400 --out ppo2_phase1.pt |
     Tee-Object -FilePath ppo2_phase1.log
@@ -48,7 +48,7 @@ python -u ppo.py --players 2 --init ppo2_phase1_best.pt --opponent self `
   --mix-teacher 0.15 `
   --mix-scripted defender:0.05 --mix-scripted most_production:0.05 --mix-scripted comet_user:0.05 `
   --external rl_v1=..\RL\submission_orbitnet.py --mix-external rl_v1:0.15 `
-  --eval-every 8 --eval-games 30 `
+  --eval-every 8 --eval-games 30 --workers 8 `
   --eval-opponent teacher --bench-also external:rl_v1 --bench-also nearest_planet `
   --iters 100000 --out ppo2.pt |
     Tee-Object -FilePath ppo2_phase2.log

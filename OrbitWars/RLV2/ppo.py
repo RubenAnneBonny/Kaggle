@@ -32,6 +32,7 @@ Usage:
   python ppo.py --players 2 --init bc2_best.pt --opponent ckpt:ppo2_best.pt --out ppo2b.pt
 """
 import argparse, contextlib, importlib.util, io, glob, os, re, numpy as np, torch, torch.nn.functional as F
+import parallel
 from ow_env import OrbitEnv, encode_state, decode_action, N_MAX, FRAC_FLOOR
 from model import OrbitNet, build_edge, frac_dist, FRAC_EPS
 from seeds import train_seed, eval_seed
@@ -361,6 +362,29 @@ def build_opponent(spec, self_pool, dev):
     return Opponent("fn", fn=getattr(ow_base, spec), dev=dev), False
 
 
+def make_opp_draw(mix_weights, self_pool, externals, dev):
+    """Build the per-episode opponent sampler from a mix-weight dict, the live
+    self-play league, and a name->callable externals map. Module-level (not a
+    closure) so collection workers can reconstruct the exact same draw from a
+    league of frozen nets they rebuilt from state-dicts (see parallel.py)."""
+    kinds = list(mix_weights.keys())
+    probs = np.array([mix_weights[k] for k in kinds], dtype=np.float64)
+    probs = probs / probs.sum()
+
+    def draw():
+        k = kinds[np.random.choice(len(kinds), p=probs)]
+        if k == "teacher":    return Opponent("fn", fn=ow_base.net_roi_support, dev=dev)
+        if k == "aggressive": return Opponent("fn", fn=ow_base.net_roi_aggressive, dev=dev)
+        if k == "weak":       return Opponent("fn", fn=ow_base.nearest_planet, dev=dev)
+        if k.startswith("script:"):
+            return Opponent("fn", fn=getattr(ow_base, k[7:]), dev=dev)
+        if k.startswith("ext:"):
+            return Opponent("fn", fn=externals[k[4:]], dev=dev)
+        net_pick = self_pool[np.random.randint(len(self_pool))]
+        return Opponent("net", nets=[net_pick], dev=dev)
+    return draw
+
+
 # --------------------------------------------------------------------------- #
 # Benchmark (real comet-bearing env, eval seed pool, n-player aware)
 # --------------------------------------------------------------------------- #
@@ -496,6 +520,10 @@ def main():
                          "enough' to seed phase-2.")
     ap.add_argument("--save-every", type=int, default=25, dest="save_every")
     ap.add_argument("--log-every", type=int, default=1, dest="log_every")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="CPU worker processes for collection AND eval (both are game-sim "
+                         "bound after the forward is batched). 0 = all cores, 1 = in-process "
+                         "(deterministic). Big speedup for the CPU-bound rollouts/eval.")
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -512,13 +540,21 @@ def main():
             print(f"  WARNING: init ckpt was trained for {ck.get('players')}p, now training {args.players}p")
     self_pool = [_snapshot(net, dev)]
     externals = {}
+    ext_paths = {}        # name -> abspath, for workers to (re)load the external agent
     for spec in args.external:
         if "=" not in spec:
             raise SystemExit(f"--external must be NAME=PATH, got: {spec}")
         name, path = spec.split("=", 1)
         externals[name] = _load_external_agent(path)
+        ext_paths[name] = os.path.abspath(path)
         print(f"loaded external agent '{name}' from {path}")
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
+
+    # CPU worker pool for collection + eval (both game-sim bound). 1 = in-process.
+    nworkers = parallel.init_pool(args.workers)
+    use_mp = nworkers > 1
+    if use_mp:
+        print(f"[parallel] {nworkers} CPU workers for collection + eval")
 
     # A persistent pool of envs stepped in lockstep by collect_batched (one per
     # game in a batch). Reused across iters; reset() rebuilds each game's state.
@@ -561,25 +597,19 @@ def main():
     # resample every step).
     mix_active = explicit_sum > 0.0 or (args.league_size > 1 and refreshable)
 
-    def _make_draw():
-        kinds = list(mix_weights.keys())
-        probs = np.array([mix_weights[k] for k in kinds], dtype=np.float64)
-        probs = probs / probs.sum()
+    opp_draw = make_opp_draw(mix_weights, self_pool, externals, dev) if mix_active else (lambda: opp)
 
-        def draw():
-            k = kinds[np.random.choice(len(kinds), p=probs)]
-            if k == "teacher":    return Opponent("fn", fn=ow_base.net_roi_support, dev=dev)
-            if k == "aggressive": return Opponent("fn", fn=ow_base.net_roi_aggressive, dev=dev)
-            if k == "weak":       return Opponent("fn", fn=ow_base.nearest_planet, dev=dev)
-            if k.startswith("script:"):
-                return Opponent("fn", fn=getattr(ow_base, k[7:]), dev=dev)
-            if k.startswith("ext:"):
-                return Opponent("fn", fn=externals[k[4:]], dev=dev)
-            net_pick = self_pool[np.random.randint(len(self_pool))]
-            return Opponent("net", nets=[net_pick], dev=dev)
-        return draw
-
-    opp_draw = _make_draw() if mix_active else (lambda: opp)
+    def _collect(seeds):
+        """Collect len(seeds) games -> (results, win_flags) in seed order. Parallel
+        across CPU workers when --workers>1, else in-process on the GPU via
+        collect_batched. Both yield identical result/cache structure."""
+        if use_mp:
+            return parallel.collect(net, self_pool, mix_weights, ext_paths, seeds,
+                                    args.players, args.max_steps)
+        envs = train_envs[:len(seeds)]
+        results = collect_batched(net, opp_draw, envs, seeds, dev)
+        wins = [1 if envs[j]._terminal_reward(0) > 0 else 0 for j in range(len(envs))]
+        return results, wins
 
     print(f"[{args.players}p] opponent={args.opponent} | lr={args.lr} ent={args.ent} clip={args.clip} vf={args.vf_coef}"
           f" | eps/iter={args.episodes_per_iter} mb={args.minibatch} kl={args.target_kl}"
@@ -622,7 +652,11 @@ def main():
         it improves. Returns (primary_wr, [(name, wr) extras], [saved filenames])."""
         primary_wr, extras, saved = None, [], []
         for name, fn, primary in bench_targets:
-            wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
+            if use_mp:
+                wr = parallel.eval_winrate(net, name, ext_paths, args.eval_games,
+                                           args.players, args.eval_off)
+            else:
+                wr = benchmark_winrate(net, dev, fn, args.eval_games, args.players, args.eval_off)
             if wr > best_wr.get(name, -1.0):
                 best_wr[name] = wr
                 path = _best_path(name, primary)
@@ -663,12 +697,11 @@ def main():
         collected = 0
         while collected < args.warmup_games:
             b = min(args.episodes_per_iter, args.warmup_games - collected)
-            envs_w = train_envs[:b]
             seeds_w = [train_seed(seed_i + j) for j in range(b)]
-            results = collect_batched(net, opp_draw, envs_w, seeds_w, dev)
+            results, wins_w = _collect(seeds_w)
             seed_i += b; collected += b
             for j, (traj, adv, ret, _dbg) in enumerate(results):
-                wwins += 1 if envs_w[j]._terminal_reward(0) > 0 else 0
+                wwins += wins_w[j]
                 for t in range(len(traj)):
                     wbatch.append([traj[t][3], ret[t]])
         print(f"[warmup] {len(wbatch)} states (collect win_rate {wwins/args.warmup_games:.2f}); "
@@ -711,13 +744,13 @@ def main():
     for it in range(args.iters):
         batch, ep_rewards, wins, dbgs = [], [], 0, []
         iter_ret, iter_val = [], []      # for value explained variance (PPO health)
-        # Collect all episodes_per_iter games in lockstep (one batched forward/step).
+        # Collect all episodes_per_iter games (parallel CPU workers or in-process GPU).
         seeds = [train_seed(seed_i + j) for j in range(args.episodes_per_iter)]
         seed_i += args.episodes_per_iter
-        results = collect_batched(net, opp_draw, train_envs, seeds, dev)
+        results, wins_list = _collect(seeds)
         for j, (traj, adv, ret, dbg) in enumerate(results):
             ep_rewards.append(sum(t[2] for t in traj))
-            wins += 1 if train_envs[j]._terminal_reward(0) > 0 else 0
+            wins += wins_list[j]
             dbgs.append(dbg)
             for t in range(len(traj)):
                 batch.append([traj[t][3], adv[t], ret[t]])     # cache holds old_logp_per
@@ -834,6 +867,7 @@ def main():
 
     torch.save({"model": net.state_dict(), "players": args.players}, args.out)
     print("saved", args.out)
+    parallel.close_pool()
 
 
 if __name__ == "__main__":

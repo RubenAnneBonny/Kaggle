@@ -318,19 +318,27 @@ Measured on a 2p run:
 | collection, 16 games | 61.9 s | 51.5 s | 1.20× |
 
 The **update** was the hidden cost (128 batch-1 forward+backwards per minibatch ×
-~20–40 minibatches/iter = 30–60 s/iter); batching it is the bulk of the ~2× per-iter
-win. **Collection** barely moved because, once the focal forward is batched, it is
-**CPU-bound** — game-sim + `encode`/`decode` Python, not the GPU. So the next lever
-is CPU `multiprocessing` of collection (the BC harvest pattern): ~52 s across ~6
-workers → ~10 s. (Earlier this was a poor fit because the GPU forward dominated;
-after batching the update + forward, collection is CPU-bound and multiprocessing
-is the right tool. The old per-state path — `policy_act` / `collect_episode` /
-`recompute_logp_value` — is kept for `diag.py` / `prof.py`.)
+~20–40 minibatches/iter = 30–60 s/iter); batching it is the bulk of the first
+per-iter win. **Collection** barely moved from batching because, once the focal
+forward is batched, it is **CPU-bound** — game-sim + `encode`/`decode` Python, not
+the GPU.
 
-Eval is the other big cost: a greedy game is ~3.7 s, so an 80-game tick ≈ 295 s.
-`run_2p_resume.ps1` phase-1 drops the (informational) teacher bench and uses
-`--eval-every 5 --eval-games 30` — phase-1 only needs to beat `nearest_planet` to
-seed phase-2.
+So collection *and* eval are parallelized across CPU workers (`parallel.py`,
+`--workers N`; `0`=all cores, `1`=in-process). Each worker runs whole games on a CPU
+copy of the net — the BC-harvest pattern — while the main process keeps the GPU for
+the batched update. Eval is greedy + fixed-seed, so the parallel win-rate is
+**bit-identical** to sequential (`test_parallel.py`). End-to-end on a 16-core box:
+
+| | original | + batching | + workers (16) |
+|---|---|---|---|
+| per-iter (collect+update) | ~100–130 s | ~55 s | **~19 s** |
+| eval tick | ~110–295 s | (same) | **~10–15 s** |
+
+Net ~5–6× end to end. The old per-state path (`policy_act` / `collect_episode` /
+`recompute_logp_value`) is kept for `diag.py` / `prof.py`. Phase-1 in the run
+scripts also drops the (informational) teacher bench and uses `--eval-every 5
+--eval-games 30 --workers 8`. (Further headroom: the league state-dicts are re-sent
+to every worker each iter — caching them worker-side would cut per-iter IPC.)
 
 ### Stage 3 — Evaluation and inspection
 
